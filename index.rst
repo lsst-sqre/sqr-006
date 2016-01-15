@@ -69,9 +69,10 @@ The key components are outlined here and expanded upon further in this technical
    Like `Read the Docs`_ we accommodate this requirement simply by serving each version its own well-defined sub-directory.
    The root URL redirects to either the latest development version of the documentation, or the documentation for the latest release (at our choosing).
 
-:ref:`Doc-tender microservice <doc-tender>`
-   Although the documentation is served as static files, there is still a need for a backend microservice.
-   It has two roles:
+:ref:`LSST the Docs microservice <ltd>`
+   Although the documentation is built by our existing Jenkins service and served static files, there is still need for a dedicated backend microservice for docs.
+   We've named the service 'LSST the Docs' in allusion to the service that inspired this work.
+   :ref:`LSST the Docs <ltd>` has two primary roles:
 
    1. Provide a REST API for discovering available versions of docs. Thus a React component, for example, can be embedded in the docs or a DM doc landing page that allows a user to select what version of the docs they want to see.
    2. Deleting expired ticket branch builds.
@@ -114,26 +115,56 @@ Discussion of affordances in the existing LSST DM Jenkins CI infrastructure to t
 Web hosting and organization of documentation versions
 ======================================================
 
-TODO.
-
 .. _hosting-service:
 
 Hosting infrastructure
 ----------------------
 
-S3.
+Since Sphinx_ generates static files, there is no need to have a live webserver (such as Nginx or Apache) running a web application involved in hosting.
+Instead we can can use a static file server.
+Our preference is to use a commodity cloud file host, such as Amazon S3 or GitHub pages, since those are far more reliable and have less downtime than any resources that LSST DM can provide in house at this time.
+GitHub Pages has the advantage of being free with an automatically-configured CDN.
+However, S3 is more flexible and fits better with our team's DevOps experience.
 
 .. _directory-structure:
 
 Hosting versions in sub-directories
 -----------------------------------
 
-Directory structure.
+A requirement of our documentation platform is that multiple versions of the documentation must be served simultaneously to support each version of the software.
+`Read the Docs`_ exposes versioning to its users in two ways:
 
-.. _doc-tender:
+1. Each version of the documentation is served from a sub-directory.
+   The root endpoint, ``/``, for the documentation site's domain redirects, by default, to the ``lateset/`` directory of docs that reflects the ``master`` Git branch of the software's Git repository.
+2. From the documentation website, the user switch between versions of the documentation with a dropdown menu widget (e.g., implemented in React).
 
-Doc-tender microservice for managing documentation lifecycles and version discovery
-===================================================================================
+The former is accomplished for LSST's doc platform by defining a directory structure that accommodates the classes of documentation versions we support, while the latter will be powered by the :ref:`LSST the Docs <ltd>`\ 's RESTful API for documentation discovery in conjunction with front-end engineering in the documentation website itself (which is outside the scope of this technical note).
+
+Here we define the directory structure of an LSST software documentation site:
+
+``/``
+   The root endpoint will redirect to ``/latest/``.
+
+``/latest/``
+   This documentation will be rebuilt whenever a Stack package (or the umbrella documentation repository) has new commits on the collective ``master`` Git branches.
+
+``/<tag>/``
+   Any tagged version of the software (such as a weekly build or a formal release) has a corresponding hosted version of documentation.
+   The directories that these docs are hosted from are named after the Git or Eups tag itself.
+
+``/<branches>/``
+   On our Jenkins page, http://ci.lsst.codes, developers can enter either a single branch or a series of branch names that the build system then obtains in a priority cascade for each package (defaulting to ``master`` branches) to compose the built stack product.
+   The documentation served for these developer-triggered build should be identified by the same sequence of branch names.
+   For example, a build of ``users/jsick/special-project, tickets/DM-9999`` would be hosted from ``/users-jsick-special-project-tickets-dm-9999/``.
+   Note the normalization of the branch names into URLs.
+
+   These endpoints are meant to be transient.
+   The :ref:`LSST the Docs <ltd>` service is responsible for deleting these development docs once they have become stale over a set time period (likely because the branch has been merged).
+
+.. _ltd:
+
+LSST the Docs microservice for managing documentation lifecycles and version discovery
+======================================================================================
 
 TODO.
 
