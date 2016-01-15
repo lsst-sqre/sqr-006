@@ -43,9 +43,9 @@ The key components are outlined here and expanded upon further in this technical
    1. Individual package's Git repositories. The these repositories, a :file:`doc/` directory contains a Sphinx_ project with reStructuredText pages (and associated images, Jupyter Notebooks and example docs) that document and teach that package. Those pages also have stubs for API reference documentation that are built through Numpydoc_ and Breathe_/Doxygen. These Sphinx projects should be buildable in a standalone state.
 
    2. An umbrella Sphinx project that itself contains documentation for the software as a whole (installation guides, release notes, quick start guides and tutorials), but also has hooks into the documentation of individual packages.
-   This umbrella Sphinx project should be an Eups package itself so that it can be versioned with stack releases.
-   When this umbrella Sphinx project is built it incorporates content from each packages :file:`doc/` directory.
-   For science pipelines this umbrella doc repository is http://github.com/lsst-sqre/pipelines_docs.
+      This umbrella Sphinx project should be an Eups package itself so that it can be versioned with stack releases.
+      When this umbrella Sphinx project is built it incorporates content from each packages :file:`doc/` directory.
+      For science pipelines this umbrella doc repository is http://github.com/lsst-sqre/pipelines_docs.
 
 :ref:`Scons and sconsUtils <sconsUtils-modifications>`
    Scons is the build tool for the LSST Stack, with sconsUtils_ containing Stack-specific customizations.
