@@ -65,17 +65,17 @@ The key components are outlined here and expanded upon further in this technical
    Sphinx_ generates static files, which makes hosting trivial, reliable, and highly performant.
    We can use Amazon S3 to serve the docs, possibly in conjunction with a CDN to improve page loading for users located across the globe.
 
-   Multiple versions of the docs must be served simultaneously for each release, the bleeding-edge master version, and developer's builds.
-   Like `Read the Docs`_ we accommodate this requirement simply by serving each version its own well-defined sub-directory.
+   Multiple versions of the docs must be served simultaneously for each release: the bleeding-edge master version, and developer's builds.
+   Like `Read the Docs`_, we accommodate this requirement simply by serving each version from its own well-defined sub-directory.
    The root URL redirects to either the latest development version of the documentation, or the documentation for the latest release (at our choosing).
 
 :ref:`LSST the Docs microservice <ltd>`
-   Although the documentation is built by our existing Jenkins service and served static files, there is still need for a dedicated backend microservice for docs.
+   Although the documentation is built by our existing Jenkins service and served as static files, there is still need for a dedicated backend microservice for docs.
    We've named the service 'LSST the Docs' in allusion to the service that inspired this work.
    :ref:`LSST the Docs <ltd>` has two primary roles:
 
    1. Provide a REST API for discovering available versions of docs. Thus a React component, for example, can be embedded in the docs or a DM doc landing page that allows a user to select what version of the docs they want to see.
-   2. Deleting expired ticket branch builds.
+   2. Workers for periodic maintenance, such as deleting stale developer documentation builds.
 
 .. _doc-source:
 
@@ -108,7 +108,7 @@ Jenkins automation
 ==================
 
 TODO.
-Discussion of affordances in the existing LSST DM Jenkins CI infrastructure to trigger a doc build, copy results to the web host, and add the documentation record to the doc-tender's database.
+Discussion of affordances in the existing LSST DM Jenkins CI infrastructure to trigger a doc build, copy results to the web host, and add the documentation record to the `LSST the Docs <ltd>` documentation version database.
 
 .. _web-hosting:
 
@@ -166,7 +166,90 @@ Here we define the directory structure of an LSST software documentation site:
 LSST the Docs microservice for managing documentation lifecycles and version discovery
 ======================================================================================
 
-TODO.
+LSST the Docs is a backend microservice that has a database of available documentation versions, a RESTful API so that these documentation versions can be managed and discovered, and finally a set of service workers that maintain the documentation resources.
+
+Database schema
+---------------
+
+There are two database tables, although additional tables may be useful for user accounts and other configuration details.
+
+projects
+^^^^^^^^
+
+Information about software projects.
+
+``eups_package``
+   Name of the top-level Eups package for the software product (e.g., ``lsst_apps``.
+
+``name``
+   Human-friendly name for the software product.
+
+``bucket``
+   S3 bucket identifier where documentation for this project is contained.
+
+``domain``
+   Domain where documentation is hosted (e.g., ``pipelines.lsst.io`` or ``qserv.lsst.io``).
+
+versions
+^^^^^^^^
+
+Information about published versions of documentation for projects.
+
+``project``
+   Foreign key to the project for this documentation.
+
+``kind``
+   ``master``, ``branch`` or ``eups_tag``.
+
+``name``
+   URL-safe name of this version; also the directory where the documentation is stored inside the bucket.
+
+``date_created``
+   Date when this version of the documentation was first published.
+
+``date_last_modified``
+   Most recent date when this version of the documentation was updated (through a new Jenkins build).
+
+``builder``
+   For ``branch``-type documentation, this field will correspond to the GitHub user who triggered the Jenkins build.
+
+RESTFul API
+-----------
+
+Project API
+^^^^^^^^^^^
+
+- ``POST projects/<eups_package>`` --- Create a new project. Message body is JSON.
+- ``PATCH projects/<eups_package>`` --- Partial update to metadata about a project. Message body is JSON.
+- ``GET projects/<eups_package>`` --- Get information about a software project. JSON with row from ``projects`` table.
+- ``GET projects/<eups_package>/versions`` --- Shortcut to list all available versions. This would be used by a version selection UI component.
+- ``DELETE projects/<eups_package>`` --- Delete a software project (also deletes its documentation on S3).
+
+Version API
+^^^^^^^^^^^
+
+- ``POST projects/<eups_package>/versions/<name>`` --- Create a new version. The message body is JSON with information to create a new row in the ``versions`` database. The documentation file upload itself is done by Jenkins.
+- ``PATCH projects/<eups_package>/versions/<name>`` --- Partial update to metadata about a version. Message body is JSON. For example, updating the ``date_last_modified``.
+- ``GET projects/<eups_package>/versions/<name>`` --- Get all metadata about a version.
+- ``DELETE projects/<eups_package>/versions/<name>`` --- Delete a version of the documentation. Deletes both the DB record and the documentation on S3.
+
+
+Periodic maintenance tasks
+--------------------------
+
+Ancillary to the LSST the Docs web app that serves the RESTFul API would be worker tasks that are triggered periodically to maintain the documentation.
+Celery can be used to mange these tasks.
+
+One such task would examine the ``date_last_modified`` for each of all ``branch``-type versions of documentation, and delete any version that has not been updated within a set time period.
+
+Other aspects (a wishlist)
+--------------------------
+
+- Users / API keys / authentication.
+- Integration with HipChat to message a developer the URL of their build documentation.
+- Providing access to build logs from Jenkins to identify issues.
+- Admin Web dashboard that consumes the API.
+- Full text search through ElasticSearch. This could be part of a larger DM documentation search system, however.
 
 .. _Sphinx: http://sphinx-doc.org
 .. _Read the Docs: http://readthedocs.org
