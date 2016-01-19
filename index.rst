@@ -124,8 +124,20 @@ Builds of the umbrella documentation repository will only link in content under 
 Modifications to sconsUtils
 ===========================
 
-TODO.
-How doxygen XML is built; and addition of a build target for Sphinx.
+Building Doxygen XML
+--------------------
+
+Our C++ API reference uses Doxygen to inspect the C++ source and Breathe_ to bridge Doxygen's output to Sphinx autodoc.
+Breathe_ operates specifically on Doxygen's XML output.
+We have modified the Doxygen builder in `sconsUtils's builders.py <https://github.com/lsst/sconsUtils/blob/u/jonathansick/new-docs/python/lsst/sconsUtils/builders.py>`_ to generate this XML during the normal ``scons doc`` build target.
+
+.. literalinclude:: snippets/scons_doxygen_builder.py
+   :language: python
+   :emphasize-lines: 9
+
+Generated XML is installed in the ``<package_name>/doc/XML/`` directory.
+
+This modification is currently available in the ``u/jonathansick/new-docs`` branch of ``sconsUtils``.
 
 .. _lsstsw-modifications:
 
