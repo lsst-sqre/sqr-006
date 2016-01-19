@@ -11,20 +11,20 @@ The advantages of this architecture are many: developers can update both code an
 Read the Docs
 -------------
 
-A key role for automation is continuously documentation deployment.
+A key role for automation is to continuously deploy the documentation.
 Whenever commits are pushed to GitHub, documentation should be re-built and served to the web.
-`Read the Docs`_ has made continuous deployment of documentation services trivial to open source projects that use Sphinx_.
+`Read the Docs`_ has made continuous deployment of documentation trivial for open source projects that use Sphinx_.
 Through a `GitHub Service Hook`_, `Read the Docs`_ is notified when a Sphinx_-based project has new commits.
 `Read the Docs`_ then clones the Git repository, builds the Sphinx_ project (i.e., ``make html``) and deploys the HTML product.
 This platform is successfully used a large number of major Python packages, such as `Astropy`_.
 
-LSST would also use `Read the Docs`_ to deploy documentation if not for complications involved in automatically building code API reference documentation.
+LSST would also use `Read the Docs`_ to deploy documentation if not for complications involved in automatically building our software stack as a prerequisite for automatically generating the API reference documentation.
 Numpydoc_ is a Sphinx_ extension that inspects Python docstrings to generate accurate and well-organized API references.
 To accomplish this docstring inspection, Numpydoc_ must be able to *import* the code being documented from within Python.
 In other words, generating documentation requires that the software being documented be built and installed.
-Naturally, `Read the Docs`_ accomplishes this by running a Python package's ``setup.py install`` command, which installs a Package's dependencies, triggers builds of any C extensions, and finally installs the Python package itself.
+Naturally, `Read the Docs`_ accomplishes this by running a Python package's ``setup.py install`` command, which installs the package's dependencies, triggers builds of any C extensions, and finally installs the Python package itself.
 
-Since LSST does uses Scons and Eups rather than Python's standard Setuptools/Distutils (i.e., a ``setup.py`` file) in its build process, standard tools such as `Read the Docs`_ do not know how to build LSST software.
+Since LSST uses Scons and Eups rather than Python's standard Setuptools/Distutils (i.e., a ``setup.py`` file) in its build process, standard tools such as `Read the Docs`_ do not know how to build LSST software.
 We are compelled, then, to build an equivalent of the `Read the Docs`_ service to build and deploy documentation for LSST's Eups and Scons-based software projects.
 
 Components of the documentation deployment service
@@ -40,12 +40,14 @@ The key components are outlined here and expanded upon further in this technical
 
    Documentation sources exist at two levels:
 
-   1. Individual package's Git repositories. The these repositories, a :file:`doc/` directory contains a Sphinx_ project with reStructuredText pages (and associated images, Jupyter Notebooks and example docs) that document and teach that package. Those pages also have stubs for API reference documentation that are built through Numpydoc_ and Breathe_/Doxygen. These Sphinx projects should be buildable in a standalone state.
+   1. Individual package's Git repositories. The these repositories, a :file:`doc/` directory contains a Sphinx_ project with reStructuredText pages (and associated images, Jupyter Notebooks and example projects) that document and teach that package.
+      Those pages also have stubs for API reference documentation that are built through Numpydoc_ and Breathe_/Doxygen.
+      These Sphinx projects should be buildable in a standalone state.
 
    2. An umbrella Sphinx project that itself contains documentation for the software as a whole (installation guides, release notes, quick start guides and tutorials), but also has hooks into the documentation of individual packages.
       This umbrella Sphinx project should be an Eups package itself so that it can be versioned with stack releases.
-      When this umbrella Sphinx project is built it incorporates content from each packages :file:`doc/` directory.
-      For science pipelines this umbrella doc repository is http://github.com/lsst-sqre/pipelines_docs.
+      When this umbrella Sphinx project is built it incorporates content from each package's :file:`doc/` directory.
+      For LSST Science Pipelines, this umbrella doc repository currently is http://github.com/lsst-sqre/pipelines_docs.
 
 :ref:`Scons and sconsUtils <sconsUtils-modifications>`
    Scons is the build tool for the LSST Stack, with sconsUtils_ containing Stack-specific customizations.
@@ -108,7 +110,7 @@ Jenkins automation
 ==================
 
 TODO.
-Discussion of affordances in the existing LSST DM Jenkins CI infrastructure to trigger a doc build, copy results to the web host, and add the documentation record to the `LSST the Docs <ltd>` documentation version database.
+Discussion of affordances in the existing LSST DM Jenkins CI infrastructure to trigger a doc build, copy results to the web host, and add the documentation record to the :ref:`LSST the Docs <ltd>` documentation version database.
 
 .. _web-hosting:
 
