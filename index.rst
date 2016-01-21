@@ -13,6 +13,8 @@ Read the Docs
 
 A key role for automation is to continuously deploy the documentation.
 Whenever commits are pushed to GitHub, documentation should be re-built and served to the web.
+This improves developer efficiency, and promotes documentation to being a first class product of our engineering team.
+
 `Read the Docs`_ has made continuous deployment of documentation trivial for open source projects that use Sphinx_.
 Through a `GitHub Service Hook`_, `Read the Docs`_ is notified when a Sphinx_-based project has new commits.
 `Read the Docs`_ then clones the Git repository, builds the Sphinx_ project (i.e., ``make html``) and deploys the HTML product.
@@ -26,6 +28,51 @@ Naturally, `Read the Docs`_ accomplishes this by running a Python package's ``se
 
 Since LSST uses Scons and Eups rather than Python's standard Setuptools/Distutils (i.e., a ``setup.py`` file) in its build process, standard tools such as `Read the Docs`_ do not know how to build LSST software.
 We are compelled, then, to build an equivalent of the `Read the Docs`_ service to build and deploy documentation for LSST's Eups and Scons-based software projects.
+
+User stories
+------------
+
+To lay the ground work for designing an LSST adaptation of `Read the Docs`_, let us imagine how the platform should work for the two key stakeholders: DM developers and readers.
+
+Developer user story
+^^^^^^^^^^^^^^^^^^^^
+
+A developer works on a ticket branch for a specific package in the LSST Stack.
+The ticket work impacts the documentation, so the developer also changes the C++ doxygen comments and Python docstrings, along with with reStructuredText-formatted content in the package's user guide, located in the :file:`/doc/` directory.
+As is already standard practice, the developer verifies that the code passes all tests by running that package's branch against the rest of the Stack using `DM's Jenkins server <https://ci.lsst.codes/job/stack-os-matrix/build?delay=0sec>`_.
+At the same time that the Stack is being built and tested, the Jenkins will also trigger a build of the documentation site for the product the developer is building (Science Pipelines, Qserv, etc.).
+This version of the product's docs will feature the ticket branch version of the docs being developed alongside master branch versions of other packages' docs.
+When the docs are published, they appear at a well-known URL such as ``pipelines.lsst.io/tickets-wxyv``.
+The build system also sends a HipChat message with the URL of the development docs, allowing the developer to find and browse the new doc build quickly.
+
+The HipChat message might also indicate a documentation build error, with a link to the Sphinx_ build log.
+This error might be due to an error in Sphinx_\ 's configuration, a syntax error in the docstrings or reStructuredText content, or a CI testing failure of the tutorials and examples in the documentation against this version of the code.
+Now, before ticket branch is merged, the developer knows to fix these build issues, or update example code to the latest software version.
+
+As part of the code review, the developer can link to the new docs.
+The developer can demonstrate, and the reviewer can verify, that the documentation adequately covers the updated functionality of the Stack.
+
+Once the ticket branch is approved and merged to ``master``, the build system with again trigger a documentation build, and latest version of the product's documentation, which is seen by default, will be published automatically.
+
+In conclusion, by integrating doc builds with developer builds, the documentation will be built more reliably (by identifying build errors), will be more accurate (by running the example code against the latest software), and be up-to-date (by making documentation readily available in the code review process).
+
+Reader user story
+^^^^^^^^^^^^^^^^^
+
+As part of our community and marketing, the documentation sites for our software products become the *homepages* for those products on the Internet.
+Any discussion about LSST Science Pipelines will link to ``http://pipelines.lsst.io``, for example.
+
+Being the product's homepage, the documentation needs serve many roles for many audiences.
+New visitors will want to quickly grasp what the product does and *feels like* through feature overviews and tutorials.
+New *users* will want to be able to quickly install the product and get hands-on experience with low-buy-in tutorials.
+Experienced users will come back to the documentation frequently to read advanced tutorials, guides for specific functionality, and API references to build their own tools on top of the product.
+Thus unlike DM's previous documentation experience, which was divided between a Confluence wiki and a doxygen-generated API reference and user guide, readers need a tightly curated documentation experience that guides them from interested party, to new user, to power user and developer.
+
+By default, a reader viewing ``http://pipelines.lsst.io`` will be redirected to ``http://pipelines.lsst.io/latest`` and be able to read about the latest (i.e., ``master`` branch) version of the product since this is *probably* what a new visitor will interested in.
+For those already invested in the product who are running a released version of the production for their science project will instead want to see documentation for that release.
+A UI component in the documentation site allows the reader to select and be redirected to that version of the documentation.
+The same UI component can be used in web pages that index web sites for various DM projects.
+
 
 Components of the documentation deployment service
 --------------------------------------------------
