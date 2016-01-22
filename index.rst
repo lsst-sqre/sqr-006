@@ -73,78 +73,87 @@ For those already invested in the product who are running a released version of 
 A UI component in the documentation site allows the reader to select and be redirected to that version of the documentation.
 The same UI component can be used in web pages that index web sites for various DM projects.
 
+LSST the Docs: a microservice architecture
+==========================================
 
-Components of the documentation deployment service
+This document describes our implementation of a continuous documentation distribution service that accommodates the LSST Stack's Eups-based package architecture.
+We call this system *LSST the Docs*, or LTD.
+
+The LSST the Docs is implemented as a collection of new and adapted *microservices*.
+A microservice architecture provides isolation of implementation details.
+For example, the service that builds the software stack needs to know about Eups, but isolates that complexity from the services that build the documentation and track published versions of the documentation.
+The microservices communicate with each other through well-specified interfaces.
+This architecture provides efficiency to the development team in that each component can be developed and maintained independently.
+
+The diagram below describes the components of LSST the Docs, and how they interface with each the.
+
+.. figure:: /_static/ltd_arch.svg
+
+   Architecture of LSST the Docs (LTD).
+
+Stack build phase on Jenkins with `buildlsstsw.sh`
 --------------------------------------------------
 
-This document describes the design and implementation of a `Read the Docs`_-style service to continuously deploy software documentation for LSST.
-Implementing this service requires both building new tools and adding to our existing build infrastructure at multiple levels.
-The key components are outlined here and expanded upon further in this technical note.
+Documentation builds begin on LSST's Jenkins system, ``ci.lsst.io``.
+As is already the case, a user triggers a build of the LSST Stack by entering what Eups product should be built (e.g., `lsst_apps``) along with specific development branches (e.g., ``tickets/DM-9999``) to pull from.
+Jenkins triggers the ``buildlsstsw.sh`` script, which in turn runs lsstsw's rebuild command to clone the Stack repositories, then build and test the Stack itself via Eups and Scons commands.
+This *existing service* does two useful things for the documentation build.
+First, the Stack is built and installed (such that it is importable as a Python package) with the full checked-out source available on a file system.
+Second, the ``scons`` command produces Doxygen XML artifacts for each package.
 
-:ref:`Documentation repositories <doc-source>`
-   The LSST Stack is a conglomerate of Git repositories (Eups packages) that are developed and versioned independently, yet built together.
-   The documentation must also follow this model.
+Documentation build phase with `ltd-mason`
+------------------------------------------
 
-   Documentation sources exist at two levels:
+When the build is complete, ``buildlsstsw.sh`` calls ``ltd-mason``, which also runs on Jenkins.
+The role of ``ltd-mason`` is to combine documentation sources from each package's locally cloned Git repository and run Sphinx_\ 's ``sphinx-build`` command to compile a static documentation website.
+The interface between ``buildlsstsw.sh`` and ``ltd-mason`` is a well-specified YAML-encoded stream that tells ``ltd-mason`` about the documentation project that the user is building, what version of the documentation is being built, and where each cloned package repository can be found on the Jenkins file system.
+In this way, ``ltd-mason`` is fully isolated from any dependency on Eups or Scons (and likewise, the LSST Stack is isolated from any dependency on Sphinx and related Python tools).
 
-   1. Individual package's Git repositories. The these repositories, a :file:`doc/` directory contains a Sphinx_ project with reStructuredText pages (and associated images, Jupyter Notebooks and example projects) that document and teach that package.
-      Those pages also have stubs for API reference documentation that are built through Numpydoc_ and Breathe_/Doxygen.
-      These Sphinx projects should be buildable in a standalone state.
+Documentation site publishing phase with `ltd-mason` and `ltd-keeper`
+---------------------------------------------------------------------
 
-   2. An umbrella Sphinx project that itself contains documentation for the software as a whole (installation guides, release notes, quick start guides and tutorials), but also has hooks into the documentation of individual packages.
-      This umbrella Sphinx project should be an Eups package itself so that it can be versioned with stack releases.
-      When this umbrella Sphinx project is built it incorporates content from each package's :file:`doc/` directory.
-      For LSST Science Pipelines, this umbrella doc repository currently is http://github.com/lsst-sqre/pipelines_docs.
+Next, the built resources must be published to a static web server.
+An S3 bucket is an ideal server for static websites.
+In LSST the Docs' microservice architecture, the ``ltd-keeper`` service that is responsible for tracking the versions of the documentation that are published.
+``ltd-keeper`` consists of a relational database that is exposed through a REST API.
 
-:ref:`Scons and sconsUtils <sconsUtils-modifications>`
-   Scons is the build tool for the LSST Stack, with sconsUtils_ containing Stack-specific customizations.
-   sconsUtils_ is modified in two ways to accommodate documentation builds:
+Thus when ``ltd-mason`` completes a build, it sends a ``POST products/<product>/versions/<slug>`` REST request to ``ltd-keeper``.
+``ltd-keeper`` persists the new or updated documentation version information to its database and provisions an S3 bucket for it, if necessary.
+``ltd-keeper`` responds to the REST request with information about the S3 bucket that ``ltd-mason`` should upload to.
 
-   1. Have Doxygen generate XML output that can be used by Breathe_ to generate a C++ API reference (Breathe_ bridges Doxygen XML to Sphinx_)
-   2. Addition of a ``sphinx`` target to the Scons build so that developers can trigger a Sphinx build for an individual Stack package.
+Documentation maintenance and discovery via the `ltd-keeper` API
+----------------------------------------------------------------
 
-:ref:`lsstsw <lsstsw-modifications>`
-   lsstsw_ is the build system used by Jenkins for building and continuously integrating our software.
-   lsstsw_ has also been co-opted by developers as a useful local development tool.
+Once documentation is published, there will be several consumers of information about the available versions of documentation.
+The ``ltd-keeper`` API and internal code is designed to accommodate these use cases, such as:
 
-:ref:`Jenkins <jenkins-modifications>`
-   TODO
-
-:ref:`Documentation web hosting and versioning <web-hosting>`
-   Sphinx_ generates static files, which makes hosting trivial, reliable, and highly performant.
-   We can use Amazon S3 to serve the docs, possibly in conjunction with a CDN to improve page loading for users located across the globe.
-
-   Multiple versions of the docs must be served simultaneously for each release: the bleeding-edge master version, and developer's builds.
-   Like `Read the Docs`_, we accommodate this requirement simply by serving each version from its own well-defined sub-directory.
-   The root URL redirects to either the latest development version of the documentation, or the documentation for the latest release (at our choosing).
-
-:ref:`LSST the Docs microservice <ltd>`
-   Although the documentation is built by our existing Jenkins service and served as static files, there is still need for a dedicated backend microservice for docs.
-   We've named the service 'LSST the Docs' in allusion to the service that inspired this work.
-   :ref:`LSST the Docs <ltd>` has two primary roles:
-
-   1. Provide a REST API for discovering available versions of docs. Thus a React component, for example, can be embedded in the docs or a DM doc landing page that allows a user to select what version of the docs they want to see.
-   2. Workers for periodic maintenance, such as deleting stale developer documentation builds.
+- React components in DM documentation and websites will send ``GET products/<product>/versions`` requests to ``ltd-keeper`` to populate lists of available documentation.
+- A tag cleanup service will send a ``DELETE products/<product>/versions/<slug>`` to remove old developer documentation versions.
 
 .. _doc-source:
 
-Structure of our documentation repositories and sources
-=======================================================
+Structure of documentation repositories and sources
+===================================================
 
-Source organization
--------------------
+Documentation repositories
+--------------------------
 
-Documentation exists in two strata: in the repositories of individual Stack packages, and in an umbrella documentation Git repository.
+Documentation exists in two strata:in the repositories of individual Stack packages, and in the product's doc repo.
 
 The role of documentation embedded in packages is to document/teach the APIs and tasks that are maintained in that specific package.
-Co-locating documentation in the code Git repository ensures that documentation is versioned in step with the code itself.
+Co-locating documentation in the code's Git repository ensures that documentation is versioned in step with the code itself.
 The documentation for a package should also be independently buildable by a developer, locally.
 Although broken cross-package links are inevitable with local builds, such local builds are critical for the productivity of documentation writers.
 
-The umbrella documentation repository produces the coherent documentation structure for the Stack product itself.
-It establishes the overall table of contents that links into Package documentation, and also contains its own content that applies at a Stack level.
-The umbrella documentation repo, in fact, is the lone Sphinx project seen by the Sphinx builder; content from each package is linked at compile time into the umbrella documentation repo.
-To integrate the umbrella documentation repository into the versioning of the Stack itself, the umbrella documentation is configured as an Eups package itself that depends on all individual packages in the stack.
+The product's doc repo is a Sphinx project produces the coherent documentation structure for a Stack product itself, such as ``lsst_apps`` or ``qserv``.
+It establishes the overall table of contents that links into package documentation, and also contains its own content that applies at a stack product level.
+The product doc repo, in fact, is the lone Sphinx project seen by the Sphinx builder; content from each package is linked at compile time into the umbrella documentation repo.
+
+The product's doc repo is not distributed Eups to end-users, so it is not an Eups package.
+Instead, Eups tags for releases are mapped to branch names in the product doc repo.
+
+Package documentation organization
+----------------------------------
 
 To effect the integration of package documentation content into the umbrella documentation repo, each package must follow the following layout:
 
@@ -164,15 +173,18 @@ To effect the integration of package documentation content into the umbrella doc
                <image files>...
 
 The role of the :file:`doc/Makefile`, :file:`doc/conf.py` and :file:`doc/index.rst` files are solely to allow local builds.
-Builds of the umbrella documentation repository will only link in content under the :file:`doc/<package_name>/` and :file:`doc/_static/<package_name>/` directories.
+Builds of the package documentation repository will only link in content under the :file:`doc/<package_name>/` and :file:`doc/_static/<package_name>/` directories.
 
 .. _sconsutils-modifications:
 
-Modifications to sconsUtils
-===========================
+Overview of the Jenkins-hosted build system
+===========================================
 
-Building Doxygen XML
---------------------
+How Jenkins builds and tests the stack
+--------------------------------------
+
+Modifying sconsUtils to build Doxygen XML
+-----------------------------------------
 
 Our C++ API reference uses Doxygen to inspect the C++ source and Breathe_ to bridge Doxygen's output to Sphinx autodoc.
 Breathe_ operates specifically on Doxygen's XML output.
@@ -188,19 +200,28 @@ This modification is currently available in the ``u/jonathansick/new-docs`` bran
 
 .. _lsstsw-modifications:
 
-Modifications to lsstsw
-=======================
+Modifications to buildlsstsw.sh
+-------------------------------
 
 TODO.
-There should be an lsstsw script that triggers the overall build process for both local developers and Jenkins.
 
-.. _jenkins-modifications:
+.. _ltd-mason:
 
-Jenkins automation
-==================
+The `ltd-mason` microservice for building and publishing Sphinx documentation
+=============================================================================
 
-TODO.
-Discussion of affordances in the existing LSST DM Jenkins CI infrastructure to trigger a doc build, copy results to the web host, and add the documentation record to the :ref:`LSST the Docs <ltd>` documentation version database.
+The `buildlsstsw.sh` - `ltd-mason` interface
+--------------------------------------------
+
+Documentation build process
+---------------------------
+
+TODO
+
+Documentation publishing process
+--------------------------------
+
+TODO
 
 .. _web-hosting:
 
@@ -223,6 +244,10 @@ However, S3 is more flexible and fits better with our team's DevOps experience.
 Hosting versions in sub-directories
 -----------------------------------
 
+.. note::
+
+   Would it be preferably for each version to live in its own S3 bucket, and be served from independent *subdomains*?
+
 A requirement of our documentation platform is that multiple versions of the documentation must be served simultaneously to support each version of the software.
 `Read the Docs`_ exposes versioning to its users in two ways:
 
@@ -230,7 +255,7 @@ A requirement of our documentation platform is that multiple versions of the doc
    The root endpoint, ``/``, for the documentation site's domain redirects, by default, to the ``lateset/`` directory of docs that reflects the ``master`` Git branch of the software's Git repository.
 2. From the documentation website, the user switch between versions of the documentation with a dropdown menu widget (e.g., implemented in React).
 
-The former is accomplished for LSST's doc platform by defining a directory structure that accommodates the classes of documentation versions we support, while the latter will be powered by the :ref:`LSST the Docs <ltd>`\ 's RESTful API for documentation discovery in conjunction with front-end engineering in the documentation website itself (which is outside the scope of this technical note).
+The former is accomplished for LSST's doc platform by defining a directory structure that accommodates the classes of documentation versions we support, while the latter will be powered by the :ref:`ltd-keeper <ltd-keeper>`\ 's RESTful API for documentation discovery in conjunction with front-end engineering in the documentation website itself (which is outside the scope of this technical note).
 
 Here we define the directory structure of an LSST software documentation site:
 
@@ -251,14 +276,14 @@ Here we define the directory structure of an LSST software documentation site:
    Note the normalization of the branch names into URLs.
 
    These endpoints are meant to be transient.
-   The :ref:`LSST the Docs <ltd>` service is responsible for deleting these development docs once they have become stale over a set time period (likely because the branch has been merged).
+   The :ref:`ltd-keeper <ltd-keeper>` service is responsible for deleting these development docs once they have become stale over a set time period (likely because the branch has been merged).
 
-.. _ltd:
+.. _ltd-keeper:
 
-LSST the Docs microservice for managing documentation lifecycles and version discovery
-======================================================================================
+The `ltd-keeper` microservice for managing documentation lifecycles and version discovery
+=========================================================================================
 
-LSST the Docs is a backend microservice that has a database of available documentation versions, a RESTful API so that these documentation versions can be managed and discovered, and finally a set of service workers that maintain the documentation resources.
+``ltd-keeper`` is a backend microservice that has a database of available documentation versions, a RESTful API so that these documentation versions can be managed and discovered, and finally a set of service workers that maintain the documentation resources.
 
 Database schema
 ---------------
@@ -268,7 +293,7 @@ There are two database tables, although additional tables may be useful for user
 projects
 ^^^^^^^^
 
-Information about software projects.
+Information about software products.
 
 ``eups_package``
    Name of the top-level Eups package for the software product (e.g., ``lsst_apps``.
@@ -285,7 +310,7 @@ Information about software projects.
 versions
 ^^^^^^^^
 
-Information about published versions of documentation for projects.
+Information about published versions of documentation for products.
 
 ``project``
    Foreign key to the project for this documentation.
@@ -308,28 +333,28 @@ Information about published versions of documentation for projects.
 RESTFul API
 -----------
 
-Project API
-^^^^^^^^^^^
+Products API
+^^^^^^^^^^^^
 
-- ``POST projects/<eups_package>`` --- Create a new project. Message body is JSON.
-- ``PATCH projects/<eups_package>`` --- Partial update to metadata about a project. Message body is JSON.
-- ``GET projects/<eups_package>`` --- Get information about a software project. JSON with row from ``projects`` table.
-- ``GET projects/<eups_package>/versions`` --- Shortcut to list all available versions. This would be used by a version selection UI component.
-- ``DELETE projects/<eups_package>`` --- Delete a software project (also deletes its documentation on S3).
+- ``POST products/<product>`` --- Create a new documentation product. Message body is JSON.
+- ``PATCH products/<product>`` --- Partial update to metadata about a product. Message body is JSON.
+- ``GET products/<product>`` --- Get information about a software product. JSON with row from ``products`` table.
+- ``GET products/<product>/versions`` --- Shortcut to list all available versions. This would be used by a version selection UI component.
+- ``DELETE products/<product>`` --- Delete a software product (also deletes its documentation on S3).
 
 Version API
 ^^^^^^^^^^^
 
-- ``POST projects/<eups_package>/versions/<name>`` --- Create a new version. The message body is JSON with information to create a new row in the ``versions`` database. The documentation file upload itself is done by Jenkins.
-- ``PATCH projects/<eups_package>/versions/<name>`` --- Partial update to metadata about a version. Message body is JSON. For example, updating the ``date_last_modified``.
-- ``GET projects/<eups_package>/versions/<name>`` --- Get all metadata about a version.
-- ``DELETE projects/<eups_package>/versions/<name>`` --- Delete a version of the documentation. Deletes both the DB record and the documentation on S3.
+- ``POST products/<product>/versions/<slug>`` --- Create a new version. The message body is JSON with information to create a new row in the ``versions`` database. The documentation file upload itself is done by ``ltd-mason``.
+- ``PATCH products/<product>/versions/<slug>`` --- Partial update to metadata about a version. Message body is JSON. For example, updating the ``date_last_modified``.
+- ``GET products/<product>/versions/<slug>`` --- Get all metadata about a version.
+- ``DELETE products/<product>/versions/<slug>`` --- Delete a version of the documentation. Deletes both the DB record and the documentation on S3.
 
 
 Periodic maintenance tasks
 --------------------------
 
-Ancillary to the LSST the Docs web app that serves the RESTFul API would be worker tasks that are triggered periodically to maintain the documentation.
+Ancillary to the ``ltd-keeper`` web app that serves the RESTFul API would be worker tasks that are triggered periodically to maintain the documentation.
 Celery can be used to mange these tasks.
 
 One such task would examine the ``date_last_modified`` for each of all ``branch``-type versions of documentation, and delete any version that has not been updated within a set time period.
