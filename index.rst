@@ -210,8 +210,42 @@ TODO.
 The `ltd-mason` microservice for building and publishing Sphinx documentation
 =============================================================================
 
-The `buildlsstsw.sh` - `ltd-mason` interface
---------------------------------------------
+``ltd-mason`` builds Sphinx documentation on Jenkins after an LSST Stack product is built.
+
+The source is available on GitHub at https://github.com/lsst-sqre/ltd-mason.
+
+.. _ltd-mason-yaml:
+
+The `buildlsstsw.sh` - `ltd-mason` manifest YAML interface
+----------------------------------------------------------
+
+The manifest is a YAML-encoded stream or file produced by ``buildlsstsw.sh`` and taken as input to the :command:`ltd-mason` command line application.
+
+A minimal example of the manifest:
+
+.. literalinclude:: _static/manifest.yaml
+   :language: yaml
+
+The fields are:
+
+refs
+   This is the set of branches or tags that a user entered upon triggering a Jenkins build of the software.
+   E.g. ``[tickets/DM-XXXX, tickets/DM-YYYY]``.
+   This field defines the *version slug* of the published documentation.
+
+doc_repo
+   Information about the product documentation repository.
+
+   - ``url`` is a Git repository URL
+   - ``ref`` is a Git ref (commit, branch or tag) of the product documentation repository to checkout.
+
+packages
+   The objects in the ``packages`` field refer to Stack packages.
+   Keys are package names (as defined by the name of their Git repositories), and values are dictionaries with the following fields:
+
+   - ``dirname`` is the path of the *installed* package in ``lsstsw/install/``
+   - ``url`` is the package's Git URL.
+   - ``ref`` is the Git reference (branch, commit or tag) for the package as it was built by Jenkins.
 
 Documentation build process
 ---------------------------
