@@ -152,6 +152,8 @@ The product doc repo, in fact, is the lone Sphinx project seen by the Sphinx bui
 The product's doc repo is not distributed Eups to end-users, so it is not an Eups package.
 Instead, Eups tags for releases are mapped to branch names in the product doc repo.
 
+.. _doc-source-pkg-organization:
+
 Package documentation organization
 ----------------------------------
 
@@ -205,6 +207,9 @@ Modifications to buildlsstsw.sh
 
 TODO.
 
+``buildlsstsw.sh`` will be modified to call :ref:`ltd-mason <ltd-mason>` to initiate a documentation build.
+The interface between ``buildlsstsw.sh`` and :ref:`ltd-mason <ltd-mason>` is a YAML-encoded file or stream.
+
 .. _ltd-mason:
 
 The `ltd-mason` microservice for building and publishing Sphinx documentation
@@ -250,7 +255,29 @@ packages
 Documentation build process
 ---------------------------
 
-TODO
+Given the input file, ``ltd-mason`` runs the following process to build a software product's HTML documentation:
+
+1. Clone the product's documentation repo and checkout the appropriate Git reference (based on  the YAML ``doc_repo`` key).
+
+2. Link the `doc/` directories of each installed package (in :file:`lsstsw/install/`) to the cloned product documentation repository (see :ref:`doc-source-pkg-organization`).
+
+   In the product documentation repository, the package doc links are:
+
+   .. code-block:: text
+
+      <product_doc_repo>/
+         # ...
+         <package_name>/
+            # link to contents of <package_repo>/doc/
+            # except _static/
+         _static/
+            # ...
+            <package_name>/ -> <package_repo>/doc/_static/
+
+3. Run a Sphinx build of the complete product documentation with :command:`sphinx-build`.
+
+The result is a build static HTML site.
+The next section describes how ``ltd-mason`` publishes this documentation to the web..
 
 Documentation publishing process
 --------------------------------
