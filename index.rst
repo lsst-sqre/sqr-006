@@ -79,7 +79,7 @@ LSST the Docs: a microservice architecture
 This document describes our implementation of a continuous documentation distribution service that accommodates the LSST Stack's Eups-based package architecture.
 We call this system *LSST the Docs*, or LTD.
 
-The LSST the Docs is implemented as a collection of new and adapted *microservices*.
+LSST the Docs is implemented as a collection of new and adapted *microservices*.
 A microservice architecture provides isolation of implementation details.
 For example, the service that builds the software stack needs to know about Eups, but isolates that complexity from the services that build the documentation and track published versions of the documentation.
 The microservices communicate with each other through well-specified interfaces.
@@ -138,7 +138,7 @@ Structure of documentation repositories and sources
 Documentation repositories
 --------------------------
 
-Documentation exists in two strata:in the repositories of individual Stack packages, and in the product's doc repo.
+Documentation exists in two strata: in the repositories of individual Stack packages, and in the product's doc repo.
 
 The role of documentation embedded in packages is to document/teach the APIs and tasks that are maintained in that specific package.
 Co-locating documentation in the code's Git repository ensures that documentation is versioned in step with the code itself.
@@ -162,14 +162,14 @@ To effect the integration of package documentation content into the umbrella doc
 .. code-block:: text
 
    <package_name>/
-      ...
+      # ...
       doc/
          Makefile
          conf.py
          index.rst
          <package_name>/
             index.rst
-            ...
+            # ...
          _static/
             <package_name>/
                <image files>...
@@ -184,6 +184,8 @@ Overview of the Jenkins-hosted build system
 
 How Jenkins builds and tests the stack
 --------------------------------------
+
+TODO.
 
 Modifying sconsUtils to build Doxygen XML
 -----------------------------------------
@@ -346,6 +348,8 @@ The `ltd-keeper` microservice for managing documentation lifecycles and version 
 
 ``ltd-keeper`` is a backend microservice that has a database of available documentation versions, a RESTful API so that these documentation versions can be managed and discovered, and finally a set of service workers that maintain the documentation resources.
 
+The source is available on GitHub at https://github.com/lsst-sqre/ltd-keeper.
+
 Database schema
 ---------------
 
@@ -391,7 +395,7 @@ Information about published versions of documentation for products.
 ``builder``
    For ``branch``-type documentation, this field will correspond to the GitHub user who triggered the Jenkins build.
 
-RESTFul API
+RESTful API
 -----------
 
 Products API
@@ -415,7 +419,7 @@ Version API
 Periodic maintenance tasks
 --------------------------
 
-Ancillary to the ``ltd-keeper`` web app that serves the RESTFul API would be worker tasks that are triggered periodically to maintain the documentation.
+Ancillary to the ``ltd-keeper`` web app that serves the RESTful API would be worker tasks that are triggered periodically to maintain the documentation.
 Celery can be used to mange these tasks.
 
 One such task would examine the ``date_last_modified`` for each of all ``branch``-type versions of documentation, and delete any version that has not been updated within a set time period.
