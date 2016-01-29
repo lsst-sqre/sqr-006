@@ -87,7 +87,7 @@ This architecture provides efficiency to the development team in that each compo
 
 The diagram below describes the components of LSST the Docs, and how they interface with each the.
 
-.. figure:: /_static/ltd_arch.svg
+.. figure:: _static/ltd_arch.svg
 
    Architecture of LSST the Docs (LTD).
 
