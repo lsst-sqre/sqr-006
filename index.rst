@@ -356,18 +356,32 @@ The `ltd-keeper` microservice for managing documentation lifecycles and version 
 
 The source is available on GitHub at https://github.com/lsst-sqre/ltd-keeper.
 
+.. _ltd-keeper-schema:
+
 Database schema
 ---------------
 
-There are two database tables, although additional tables may be useful for user accounts and other configuration details.
+There are databases for API ``users``, ``projects``, and ``versions``.
 
-projects
+users
+^^^^^
+
+``username``
+   Username.
+
+``password_hash``
+   Hash of the user's password against the application's secret key.
+
+products
 ^^^^^^^^
 
 Information about software products.
 
 ``eups_package``
-   Name of the top-level Eups package for the software product (e.g., ``lsst_apps``.
+   Name of the top-level Eups package for the software product (e.g., ``lsst_apps``).
+
+``doc_repo``
+   Git URL of the product's documentation repository.
 
 ``name``
    Human-friendly name for the software product.
@@ -389,8 +403,8 @@ Information about published versions of documentation for products.
 ``kind``
    ``master``, ``branch`` or ``eups_tag``.
 
-``name``
-   URL-safe name of this version; also the directory where the documentation is stored inside the bucket.
+``slug``
+   URL-safe name of this version (the version slug). This is used as the directory where the documentation is stored inside the bucket.
 
 ``date_created``
    Date when this version of the documentation was first published.
