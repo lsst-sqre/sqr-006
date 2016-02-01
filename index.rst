@@ -240,11 +240,17 @@ refs
    E.g. ``[tickets/DM-XXXX, tickets/DM-YYYY]``.
    This field defines the *version slug* of the published documentation.
 
-doc_repo
-   Information about the product documentation repository.
+build_id
+   A string identifying the Jenkins build.
+   Typically this is a monotonically increasing (or time-sortable) number.
 
-   - ``url`` is a Git repository URL
-   - ``ref`` is a Git ref (commit, branch or tag) of the product documentation repository to checkout.
+product
+   This is the Eups product for which documentation is being built.
+   The name maps to a row in the ``products`` :ref:`table of ltd-keeper <ltd-keeper-schema>`.
+   ``ltd-keeper`` maintains information such as the URL of the Git product documentation repository.
+
+product_ref
+   Git ref (commit, branch or tag) of the product documentation repository to checkout for the build.
 
 packages
    The objects in the ``packages`` field refer to Stack packages.
