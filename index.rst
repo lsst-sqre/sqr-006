@@ -173,11 +173,11 @@ Co-locating documentation in the code's Git repository ensures that documentatio
 The documentation for a package should also be independently buildable by a developer, locally.
 Although broken cross-package links are inevitable with local builds, such local builds are critical for the productivity of documentation writers.
 
-The product's doc repo is a Sphinx project produces the coherent documentation structure for a Stack product itself, such as ``lsst_apps`` or ``qserv``.
-It establishes the overall table of contents that links into package documentation, and also contains its own content that applies at a stack product level.
+The product's doc repo is a Sphinx project that produces the coherent documentation structure for a Stack product itself, such as ``lsst_apps`` or ``qserv``.
+It establishes the overall table of contents that links into package documentation, and also contains its own content that applies at a Stack product level.
 The product doc repo, in fact, is the lone Sphinx project seen by the Sphinx builder; content from each package is linked at compile time into the umbrella documentation repo.
 
-The product's doc repo is not distributed Eups to end-users, so it is not an Eups package.
+The product's doc repo is not distributed by Eups to end-users, so it is not an Eups package.
 Instead, Eups tags for releases are mapped to branch names in the product doc repo.
 
 .. _doc-source-pkg-organization:
@@ -195,15 +195,41 @@ To effect the integration of package documentation content into the umbrella doc
          Makefile
          conf.py
          index.rst
-         <package_name>/
-            index.rst
-            # ...
+         # ...
          _static/
             <package_name>/
                <image files>...
 
 The role of the :file:`doc/Makefile`, :file:`doc/conf.py` and :file:`doc/index.rst` files are solely to allow local builds.
-Builds of the package documentation repository will only link in content under the :file:`doc/<package_name>/` and :file:`doc/_static/<package_name>/` directories.
+
+.. _doc-product-organization:
+
+Product documentation organization
+----------------------------------
+
+When ``ltd-mason`` builds documentation for a product, it links documentation resources from individual package repositories into a cloned copy of the product's documentation repository.
+
+The links are arranged as so:
+
+.. code-block:: text
+
+   <product_doc_repo>/
+     Makefile
+     conf.py
+     index.rst
+     # ...
+     <package_1>/
+       index.rst -> /<package_1>/doc/index.rst
+       # ...
+     <package_2>/
+       index.rst -> /<package_2>/doc/index.rst
+       # ...
+     _static/
+       <package_1>/ -> /<package_1>/doc/_static/<package_1>
+       <package_2>/ -> /<package_2>/doc/_static/<package_2>
+       # ...
+
+See :ref:`ltd-mason` for further details about the documentation build process.
 
 ..
   .. _sconsutils-modifications:
