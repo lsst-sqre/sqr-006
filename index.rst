@@ -272,8 +272,7 @@ See :ref:`ltd-mason` for further details about the documentation build process.
 The `ltd-mason` documentation build service
 ===========================================
 
-ltd-mason is a Python command line application that operates on the Jenkins build server, and is an after-burner for the regular software build process.
-
+``ltd-mason`` is a Python command line application that operates on the Jenkins build server, and is an after-burner for the regular software build process.
 ``ltd-mason``\ ’s source is available on GitHub at https://github.com/lsst-sqre/ltd-mason.
 
 .. _yaml-manifest:
@@ -281,7 +280,11 @@ ltd-mason is a Python command line application that operates on the Jenkins buil
 The `buildlsstsw.sh` - `ltd-mason` YAML Manifest interface
 ----------------------------------------------------------
 
-The manifest is a YAML-encoded stream or file produced by ``buildlsstsw.sh`` and taken as input to the :command:`ltd-mason` command line application.
+Although ``ltd-mason`` runs on Jenkins in the Stack build environment, ``ltd-mason`` is not integrated tightly with LSST's build technologies (Eups and Scons).
+This choice allows our build system to evolve independently of the Stack build environment, and can even be accomodate non-Eups based build envionments.
+
+The interface layer that bridges the software build system (``buillsstsw.sh``) to the documentation build system (``ltd-mason``) is a Manifest file, formatted as YAML.
+Note that this YAML manifest is the sole input to ``ltd-mason``, besides a security key configuration files. 
 
 A minimal example of the manifest:
 
@@ -290,30 +293,46 @@ A minimal example of the manifest:
 
 The fields are:
 
+product_name
+   This is the slug identifier that maps to a Product resource in ``ltd-keeper``.
+   For Eups-based projects, this should correspond to the Stack meta-package name (e.g., ``lsst_apps``).
+
+build_id
+   A string uniquely identifying the Jenkins build.
+   Typically this is a monotonically increasing (or time-sortable) number.
+
 refs
    This is the set of branches or tags that a user entered upon triggering a Jenkins build of the software.
    E.g. ``[tickets/DM-XXXX, tickets/DM-YYYY]``.
-   This field defines the *version slug* of the published documentation.
+   This field defines is used by ``ltd-keeper`` to map documentation Builds to Editions.
 
-build_id
-   A string identifying the Jenkins build.
-   Typically this is a monotonically increasing (or time-sortable) number.
+requester_github_handle
+   This is an optional field that can contain the GitHub username of the person requesting the build.
+   If provided, this will be used to notify the build requester through Slack.
 
-product
-   This is the Eups product for which documentation is being built.
-   The name maps to a row in the ``products`` :ref:`table of ltd-keeper <ltd-keeper-schema>`.
-   ``ltd-keeper`` maintains information such as the URL of the Git product documentation repository.
+doc_repo.url
+   The Git URL of the product's documentation repository.
+   For single repository software projects (or technical notes), this will be the repository of the software or technote itself.
 
-product_ref
-   Git ref (commit, branch or tag) of the product documentation repository to checkout for the build.
+   *FIXME: is this necessary since the information is available in ltd-keeper?*
+
+doc_repo.ref
+   This is the Git reference (commit, tag or branch) to checkout from the product's documentation repository.
 
 packages
-   The objects in the ``packages`` field refer to Stack packages.
-   Keys are package names (as defined by the name of their Git repositories), and values are dictionaries with the following fields:
+   This field consists of key-value objects for each package in an Eups-based multi-package software product.
+   The keys correspond to the names of individual packages (and the Git repository name in the github.com/lsst organization)
 
-   - ``dirname`` is the path of the *installed* package in ``lsstsw/install/``
-   - ``url`` is the package's Git URL.
-   - ``ref`` is the Git reference (branch, commit or tag) for the package as it was built by Jenkins.
+   packages.<pkg_name>.dir
+      Local directory where the package was installed in :file:`lsstsw/`.
+   
+   packages.<pkg_name>.url
+      URL of the package's Git repository on GitHub
+
+   packages.<pkg_name>.ref
+      Git reference (typically a branch name) that was cloned and installed by lsstsw.
+
+.. _ltd-mason-build:
 
 Documentation build process
 ---------------------------
@@ -341,6 +360,8 @@ Given the input file, ``ltd-mason`` runs the following process to build a softwa
 
 The result is a build static HTML site.
 The next section describes how ``ltd-mason`` publishes this documentation to the web..
+
+.. _ltd-mason-publishing:
 
 Documentation publishing process
 --------------------------------
