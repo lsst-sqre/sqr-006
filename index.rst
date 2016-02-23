@@ -92,10 +92,10 @@ The diagram below describes the components of LSST the Docs, and how they interf
 
    Architecture of LSST the Docs (LTD).
 
-In short, LSST the Docs consists of a service, ``ltd-mason`` that runs as an afterburner to the Jenkins software build server.
+In short, LSST the Docs consists of a service, ``ltd-mason``, that runs as an afterburner to the Jenkins software build server.
 The ``ltd-keeper`` is a RESTful application that manages versions of published documentation and coordinates cloud resources.
-Documentation data is stored in the Cloud on Amazon S3.
-The Fastly content distribution network, powered by Varnish, is used to map versions of documentation in an S3 bucket to highly intuitive URLs.
+Documentation data is stored in the cloud on Amazon S3.
+The Fastly_ content distribution network, powered by Varnish_, is used to map versions of documentation in an S3 bucket to highly intuitive URLs.
 
 Walk-through of LSST the Docs
 -----------------------------
@@ -134,7 +134,7 @@ See :ref:`ltd-keeper` for further details about the ``ltd-keeper`` application a
 Publishing documentation editions with ltd-keeper and Fastly
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Notice that ``ltd-mason``' ’s scope is only to upload discrete *builds* of a software product's documentation S3.
+Notice that ``ltd-mason``\ ’s scope is only to upload discrete *builds* of a software product's documentation to S3.
 
 However, ``ltd-mason`` passes on information from the YAML manifest about the version composition of the software being documented.
 These documentation builds might reflect the latest ``master`` branches of the software, a development ticket branch, or even updated documentation for previous software releases
@@ -440,53 +440,59 @@ Serving multiple documentation products and editions from S3 with Fastly
 
 .. _hosting-service:
 
-Hosting infrastructure
-----------------------
+Build storage on AWS S3
+-------------------------------------
 
-Since Sphinx_ generates static files, there is no need to have a live webserver (such as Nginx or Apache) running a web application involved in hosting.
-Instead we can can use a static file server.
-Our preference is to use a commodity cloud file host, such as Amazon S3 or GitHub pages, since those are far more reliable and have less downtime than any resources that LSST DM can provide in house at this time.
-GitHub Pages has the advantage of being free with an automatically-configured CDN.
-However, S3 is more flexible and fits better with our team's DevOps experience.
+TODO
+
+..
+  Since Sphinx_ generates static files, there is no need to have a live webserver (such as Nginx or Apache) running a web application involved in hosting.
+  Instead we can can use a static file server.
+  Our preference is to use a commodity cloud file host, such as Amazon S3 or GitHub pages, since those are far more reliable and have less downtime than any resources that LSST DM can provide in house at this time.
+  GitHub Pages has the advantage of being free with an automatically-configured CDN.
+  However, S3 is more flexible and fits better with our team's DevOps experience.
 
 .. _directory-structure:
 
-Hosting versions in sub-directories
------------------------------------
+Serving documentation Editions with Fastly
+------------------------------------------
 
-.. note::
+TODO
 
-   Would it be preferably for each version to live in its own S3 bucket, and be served from independent *subdomains*?
-
-A requirement of our documentation platform is that multiple versions of the documentation must be served simultaneously to support each version of the software.
-`Read the Docs`_ exposes versioning to its users in two ways:
-
-1. Each version of the documentation is served from a sub-directory.
-   The root endpoint, ``/``, for the documentation site's domain redirects, by default, to the ``lateset/`` directory of docs that reflects the ``master`` Git branch of the software's Git repository.
-2. From the documentation website, the user switch between versions of the documentation with a dropdown menu widget (e.g., implemented in React).
-
-The former is accomplished for LSST's doc platform by defining a directory structure that accommodates the classes of documentation versions we support, while the latter will be powered by the :ref:`ltd-keeper <ltd-keeper>`\ 's RESTful API for documentation discovery in conjunction with front-end engineering in the documentation website itself (which is outside the scope of this technical note).
-
-Here we define the directory structure of an LSST software documentation site:
-
-``/``
-   The root endpoint will redirect to ``/latest/``.
-
-``/latest/``
-   This documentation will be rebuilt whenever a Stack package (or the umbrella documentation repository) has new commits on the collective ``master`` Git branches.
-
-``/<tag>/``
-   Any tagged version of the software (such as a weekly build or a formal release) has a corresponding hosted version of documentation.
-   The directories that these docs are hosted from are named after the Git or Eups tag itself.
-
-``/<branches>/``
-   On our Jenkins page, http://ci.lsst.codes, developers can enter either a single branch or a series of branch names that the build system then obtains in a priority cascade for each package (defaulting to ``master`` branches) to compose the built stack product.
-   The documentation served for these developer-triggered build should be identified by the same sequence of branch names.
-   For example, a build of ``users/jsick/special-project, tickets/DM-9999`` would be hosted from ``/users-jsick-special-project-tickets-dm-9999/``.
-   Note the normalization of the branch names into URLs.
-
-   These endpoints are meant to be transient.
-   The :ref:`ltd-keeper <ltd-keeper>` service is responsible for deleting these development docs once they have become stale over a set time period (likely because the branch has been merged).
+..
+  .. note::
+  
+     Would it be preferably for each version to live in its own S3 bucket, and be served from independent *subdomains*?
+  
+  A requirement of our documentation platform is that multiple versions of the documentation must be served simultaneously to support each version of the software.
+  `Read the Docs`_ exposes versioning to its users in two ways:
+  
+  1. Each version of the documentation is served from a sub-directory.
+     The root endpoint, ``/``, for the documentation site's domain redirects, by default, to the ``lateset/`` directory of docs that reflects the ``master`` Git branch of the software's Git repository.
+  2. From the documentation website, the user switch between versions of the documentation with a dropdown menu widget (e.g., implemented in React).
+  
+  The former is accomplished for LSST's doc platform by defining a directory structure that accommodates the classes of documentation versions we support, while the latter will be powered by the :ref:`ltd-keeper <ltd-keeper>`\ 's RESTful API for documentation discovery in conjunction with front-end engineering in the documentation website itself (which is outside the scope of this technical note).
+  
+  Here we define the directory structure of an LSST software documentation site:
+  
+  ``/``
+     The root endpoint will redirect to ``/latest/``.
+  
+  ``/latest/``
+     This documentation will be rebuilt whenever a Stack package (or the umbrella documentation repository) has new commits on the collective ``master`` Git branches.
+  
+  ``/<tag>/``
+     Any tagged version of the software (such as a weekly build or a formal release) has a corresponding hosted version of documentation.
+     The directories that these docs are hosted from are named after the Git or Eups tag itself.
+  
+  ``/<branches>/``
+     On our Jenkins page, http://ci.lsst.codes, developers can enter either a single branch or a series of branch names that the build system then obtains in a priority cascade for each package (defaulting to ``master`` branches) to compose the built stack product.
+     The documentation served for these developer-triggered build should be identified by the same sequence of branch names.
+     For example, a build of ``users/jsick/special-project, tickets/DM-9999`` would be hosted from ``/users-jsick-special-project-tickets-dm-9999/``.
+     Note the normalization of the branch names into URLs.
+  
+     These endpoints are meant to be transient.
+     The :ref:`ltd-keeper <ltd-keeper>` service is responsible for deleting these development docs once they have become stale over a set time period (likely because the branch has been merged).
 
 .. _Sphinx: http://sphinx-doc.org
 .. _Read the Docs: http://readthedocs.org
@@ -496,3 +502,5 @@ Here we define the directory structure of an LSST software documentation site:
 .. _sconsUtils: https://github.com/lsst/sconsUtils
 .. _Breathe: http://breathe.readthedocs.org/en/latest/
 .. _lsstsw: https://github.com/lsst/lsstsw
+.. _Fastly: https://www.fastly.com
+.. _Varnish: https://www.varnish-cache.org
