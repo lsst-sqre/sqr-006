@@ -373,97 +373,65 @@ TODO
 The `ltd-keeper` microservice for managing documentation lifecycles and version discovery
 =========================================================================================
 
-``ltd-keeper`` is a backend microservice that has a database of available documentation versions, a RESTful API so that these documentation versions can be managed and discovered, and finally a set of service workers that maintain the documentation resources.
+``ltd-keeper`` is a backend microservice that has a database of available documentation versions, a RESTful API so that these documentation versions can be managed and discovered, and hooks into Cloud resources (AWS S3 and Route 53, Fastly, Slack and GitHub).
 
 The source is available on GitHub at https://github.com/lsst-sqre/ltd-keeper.
+User and DevOps documentation for ``ltd-keeper`` is available at https://ltd-keeper.lsst.io. 
 
-.. _ltd-keeper-schema:
+.. _ltd-keeper-resources:
 
-Database schema
----------------
+`ltd-keeper` API resources and concepts
+---------------------------------------
 
-There are databases for API ``users``, ``projects``, and ``versions``.
+As a RESTful application, ``ltd-keeper`` makes resources available through URL endpoints that can be acted upon with HTTP methods.
 
-users
-^^^^^
+.. _ltd-keeper-products:
 
-``username``
-   Username.
-
-``password_hash``
-   Hash of the user's password against the application's secret key.
-
-products
+Products
 ^^^^^^^^
 
-Information about software products.
+Products, ``/products/`` are the root resource.
+A product corresponds to a software projects (such as ``lsst_apps`` or qserv) or a pure documentation project, such as a technical note or design document.
 
-``eups_package``
-   Name of the top-level Eups package for the software product (e.g., ``lsst_apps``).
+An administrator creates a new Product with `POST /products/ <khttp://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#post--v1-products->`_ and retrieves information about a single product with `GET /v1/products/(slug) <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#get--v1-products-(slug)>`_.
+A listing of all products is obtained with `http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#get--v1-products- <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#get--v1-products->`_.
 
-``doc_repo``
-   Git URL of the product's documentation repository.
+See the `/products/ resource documentation <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html>`_ for a full listing of the methods and metadata associated with a Product.
 
-``name``
-   Human-friendly name for the software product.
+.. _ltd-keeper-builds:
 
-``bucket``
-   S3 bucket identifier where documentation for this project is contained.
+Builds
+^^^^^^
 
-``domain``
-   Domain where documentation is hosted (e.g., ``pipelines.lsst.io`` or ``qserv.lsst.io``).
+Builds are discrete, immutable uploads of a Product's documentation created with ``ltd-mason``.
 
-versions
+Builds are created with a `POST /v1/products/(slug)/builds/ <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#post--v1-products-(slug)-builds->`_.
+
+See the `/builds/ resource documentation <http://ltd-keeper.lsst.io/en/tickets-dm-4950/builds.html>`_ for a full listing of the methods and metadata associated with a Build.
+
+.. _ltd-keeper-editions:
+
+Editions
 ^^^^^^^^
 
-Information about published versions of documentation for products.
+Editions are documentation published to the end-user with consistent URLs corresponding to a semantic version such as a release ('v1'), the HEAD of development ('latest') or even a ticket branch ('tickets-dm-nnnn').
 
-``project``
-   Foreign key to the project for this documentation.
+Editions are lightweight pointers to Builds.
+An Edition is updated by re-pointing to a different Build using the `POST /v1/editions/(int: id)/rebuild <http://ltd-keeper.lsst.io/en/tickets-dm-4950/editions.html#post--v1-editions-(int-id)-rebuild>`_ method.
+When an Edition is re-built, no files are moved.
+Instead ``ltd-keeper`` modified the Varnish cache layer provided by Fastly to re-route URLs for an edition to a new build in the S3 bucket.
+See :ref:`s3-hosting` for more information.
 
-``kind``
-   ``master``, ``branch`` or ``eups_tag``.
+See the `/editions/ resource documentation <http://ltd-keeper.lsst.io/en/tickets-dm-4950/editions.html>`_ for a full listing of the methods and metadata associated with an Edition.
 
-``slug``
-   URL-safe name of this version (the version slug). This is used as the directory where the documentation is stored inside the bucket.
-
-``date_created``
-   Date when this version of the documentation was first published.
-
-``date_last_modified``
-   Most recent date when this version of the documentation was updated (through a new Jenkins build).
-
-``builder``
-   For ``branch``-type documentation, this field will correspond to the GitHub user who triggered the Jenkins build.
-
-RESTful API
------------
-
-Products API
-^^^^^^^^^^^^
-
-- ``POST products/<product>`` --- Create a new documentation product. Message body is JSON.
-- ``PATCH products/<product>`` --- Partial update to metadata about a product. Message body is JSON.
-- ``GET products/<product>`` --- Get information about a software product. JSON with row from ``products`` table.
-- ``GET products/<product>/versions`` --- Shortcut to list all available versions. This would be used by a version selection UI component.
-- ``DELETE products/<product>`` --- Delete a software product (also deletes its documentation on S3).
-
-Version API
-^^^^^^^^^^^
-
-- ``POST products/<product>/versions/<slug>`` --- Create a new version. The message body is JSON with information to create a new row in the ``versions`` database. The documentation file upload itself is done by ``ltd-mason``.
-- ``PATCH products/<product>/versions/<slug>`` --- Partial update to metadata about a version. Message body is JSON. For example, updating the ``date_last_modified``.
-- ``GET products/<product>/versions/<slug>`` --- Get all metadata about a version.
-- ``DELETE products/<product>/versions/<slug>`` --- Delete a version of the documentation. Deletes both the DB record and the documentation on S3.
-
-
-Periodic maintenance tasks
---------------------------
-
-Ancillary to the ``ltd-keeper`` web app that serves the RESTful API would be worker tasks that are triggered periodically to maintain the documentation.
-Celery can be used to mange these tasks.
-
-One such task would examine the ``date_last_modified`` for each of all ``branch``-type versions of documentation, and delete any version that has not been updated within a set time period.
+..
+  Periodic maintenance tasks
+  --------------------------
+  
+  Ancillary to the ``ltd-keeper`` web app that serves the RESTful API would be worker tasks that are triggered periodically to maintain the documentation.
+  Celery can be used to mange these tasks.
+  
+  One such task would examine the ``date_last_modified`` for each of all ``branch``-type versions of documentation, and delete any version that has not been updated within a set time period.
 
 .. _s3-hosting:
 
