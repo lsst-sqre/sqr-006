@@ -3,99 +3,148 @@
 Introduction
 ============
 
-LSST Data Management is adopting a new ecosystem for documenting software.
-Rather than using a wiki, which is divorced from the codebase, we are tightly integrating code and documentation.
-We use Sphinx_ to generate static documentation websites derived from text and images that live in the code's Git repository, and mine the Python docstrings and C++ comments to automatically build API references.
-The advantages of this architecture are many: developers can update both code and docs in the development branch, documentation is intrinsically versioned in step with the code, and since the docs are static files built by a Python-based system we have copious opportunities to provide bespoke tooling and automation to the doc platform.
+Documentation is an integral deliverable of LSST Data Management's software development work, and is produced at all stages of development.
+Before code is written, we document architecture designs, specifications, and experiments.
+While code is being written, documentation describes the implementation and interfaces, and makes the software approachable through user guides and tutorials.
 
-Read the Docs
--------------
+Documentation also underpins the usefulness of LSST software and data as a resource for the astronomical community.
+All LSST Data Management software is open source and engineered with the expectation that it will find use beyond LSST's alert and data release pipelines.
+For instance, astronomers exploring LSST data through the Level 3 compute environment will become direct users of LSST software.
+And though it is not an explicit mission statement, we expect that future imaging surveys will adopt and build upon LSST software since the LSST pipelines are already engineered to process data from several observatories for testing purposes.
+Documentation is prerequisite for any use and adoption of LSST software 
+For any sustainable use of LSST software beyond LSST's internal teams.
 
-A key role for automation is to continuously deploy the documentation.
-Whenever commits are pushed to GitHub, documentation should be re-built and served to the web.
-This improves developer efficiency, and promotes documentation to being a first class product of our engineering team.
+Importance of Integrating Documentation and Code in Git
+-------------------------------------------------------
 
-`Read the Docs`_ has made continuous deployment of documentation trivial for open source projects that use Sphinx_.
-Through a `GitHub Service Hook`_, `Read the Docs`_ is notified when a Sphinx_-based project has new commits.
-`Read the Docs`_ then clones the Git repository, builds the Sphinx_ project (i.e., ``make html``) and deploys the HTML product.
-This platform is successfully used a large number of major Python packages, such as `Astropy`_.
+Originally we authored and published documentation in a manner removed from the code itself, though Confluence wikis or PDFs archived to Docushare.
+While these tools made the initial acts of content creation and publication straightforward, they provided no obvious workflow for updating and versioning documentation as part of regular development work.
+As a result, documentation would often fall out of step with code.
+An example manifestation of this problem is silent breakages of tutorials and user guides hosted on wikis as the code was been developed.
 
-LSST would also use `Read the Docs`_ to deploy documentation if not for complications involved in automatically building our software stack as a prerequisite for automatically generating the API reference documentation.
-Numpydoc_ is a Sphinx_ extension that inspects Python docstrings to generate accurate and well-organized API references.
-To accomplish this docstring inspection, Numpydoc_ must be able to *import* the code being documented from within Python.
-In other words, generating documentation requires that the software being documented be built and installed.
-Naturally, `Read the Docs`_ accomplishes this by running a Python package's ``setup.py install`` command, which installs the package's dependencies, triggers builds of any C extensions, and finally installs the Python package itself.
+On the other hand, we already have an excellent workflow for developing well-tested and peer-reviewed code (see the `DM Development Workflow`_).
+By treating documentation as code we realize the same workflow advantages for documentation development.
+First, locating documentation in the same Git repository as the associated code removes any versioning ambiguity: documentation reflects changes in code potentially on a per-commit granularity.
+Such documentation can also be continuously integrated against the associated code.
+Continuous integration ensures that examples work, application programming interfaces are properly documented, and that the documentation web site itself can be built without errors.
+Finally, such documentation can be reviewed as part of pull requests.
+Overall, treating documentation as code can improve the overall documentation culture of a software development organization.
+There is much less cognitive overhead for a developer to update documentation that lives a Git repository (even within a source code file) than there is to deal with a separate environment like a wiki.
 
-Since LSST uses Scons and Eups rather than Python's standard Setuptools/Distutils (i.e., a ``setup.py`` file) in its build process, standard tools such as `Read the Docs`_ do not know how to build LSST software.
-We are compelled, then, to build an equivalent of the `Read the Docs`_ service to build and deploy documentation for LSST's Eups and Scons-based software projects.
+Simply storing documentation in Git is only the first step.
+Infrastructure is needed to build and deploy the documentation.
+LSST Data Management has used Doxygen to extract and render documentation stored in in the Git repositories of software packages.
+However, the documentation deployment implementation had several short-comings.
+Documentation was only published once merged to master, hindering well-informed conversations about the documentation during code reviews.
+This documentation build and deployment system was also highly specific to both the LSST Science Pipelines architecture and the build server.
+This made it difficult to independently debug documentation builds.
+Each LSST software project largely had to invent its own documentation deployment system, resulting in several ad-hoc approaches across the science pipelines, database, user interface and simulations teams.
+Finally, limitations in Doxygen encouraged software documentation to also be hosted on Confluence wikis, leading to an entire class of issues already described.
 
-..
-  User stories
-  ------------
-  
-  To lay the ground work for designing an LSST adaptation of `Read the Docs`_, let us imagine how the platform should work for the two key stakeholders: DM developers and readers.
-  
-  Developer user story
-  ^^^^^^^^^^^^^^^^^^^^
-  
-  A developer works on a ticket branch for a specific package in the LSST Stack.
-  The ticket work impacts the documentation, so the developer also changes the C++ doxygen comments and Python docstrings, along with with reStructuredText-formatted content in the package's user guide, located in the :file:`/doc/` directory.
-  As is already standard practice, the developer verifies that the code passes all tests by running that package's branch against the rest of the Stack using `DM's Jenkins server <https://ci.lsst.codes/job/stack-os-matrix/build?delay=0sec>`_.
-  At the same time that the Stack is being built and tested, the Jenkins will also trigger a build of the documentation site for the product the developer is building (Science Pipelines, Qserv, etc.).
-  This version of the product's docs will feature the ticket branch version of the docs being developed alongside master branch versions of other packages' docs.
-  When the docs are published, they appear at a well-known URL such as ``pipelines.lsst.io/tickets-wxyv``.
-  The build system also sends a HipChat message with the URL of the development docs, allowing the developer to find and browse the new doc build quickly.
-  
-  The HipChat message might also indicate a documentation build error, with a link to the Sphinx_ build log.
-  This error might be due to an error in Sphinx_\ 's configuration, a syntax error in the docstrings or reStructuredText content, or a CI testing failure of the tutorials and examples in the documentation against this version of the code.
-  Now, before ticket branch is merged, the developer knows to fix these build issues, or update example code to the latest software version.
-  
-  As part of the code review, the developer can link to the new docs.
-  The developer can demonstrate, and the reviewer can verify, that the documentation adequately covers the updated functionality of the Stack.
-  
-  Once the ticket branch is approved and merged to ``master``, the build system with again trigger a documentation build, and latest version of the product's documentation, which is seen by default, will be published automatically.
-  
-  By integrating doc builds with developer builds, the documentation will be built more reliably (by identifying build errors), will be more accurate (by running the example code against the latest software), and be up-to-date (by making documentation readily available in the code review process).
-  
-  Reader user story
-  ^^^^^^^^^^^^^^^^^
-  
-  As part of our community-building and marketing, the documentation sites for our software products become the *homepages* for those products on the Internet.
-  Any discussion about LSST Science Pipelines will link to ``http://pipelines.lsst.io``, for example.
-  
-  Being the product's homepage, the documentation needs serve many roles for many audiences.
-  New visitors will want to quickly grasp what the product does and *feels like* through feature overviews and tutorials.
-  New *users* will want to be able to quickly install the product and get hands-on experience with low-buy-in tutorials.
-  Experienced users will come back to the documentation frequently to read advanced tutorials, guides for specific functionality, and API references to build their own tools on top of the product.
-  Thus unlike DM's previous documentation experience, which was divided between a Confluence wiki and a doxygen-generated API reference and user guide, readers need a tightly curated documentation experience that guides them from interested party, to new user, to power user and developer.
-  
-  By default, a reader viewing ``http://pipelines.lsst.io`` will be redirected to ``http://pipelines.lsst.io/latest`` and be able to read about the latest (i.e., ``master`` branch) version of the product since this is *probably* what a new visitor will interested in.
-  For those already invested in the product who are running a released version of the production for their science project will instead want to see documentation for that release.
-  A UI component in the documentation site allows the reader to select and be redirected to that version of the documentation.
-  The same UI component can be used in web pages that index web sites for various DM projects.
+Read the Docs and Continous Documentation Delivery
+--------------------------------------------------
+
+`Read the Docs`_ redefined expectations for how software documentation should be deployed.
+Along with the Sphinx_ documentation build tool, Read the Docs has provided a common documentation infrastructure for open source software projects.
+`As of 2015 <http://blog.readthedocs.com/read-the-docs-2015-stats/>`_, Read the Docs hosts documentation for 28,000 projects and served documentation to over 38 million unique visitors.
+
+Through a `GitHub Service Hook`_, Read the Docs is notified when a Sphinx-based project has new commits.
+ead the Docs then clones the Git repository, builds the Sphinx project (i.e., ``make html``) and deploys the HTML product.
+Read the Docs can be configured to listen to different Git branches.
+By default Read the Docs builds documentation from the ``master`` Git branch and publishes it do the ``/en/latest/`` URL path of the documentation website.
+It can can publish additional branches, either for private code review or to maintain documentation for stable releases.
+This branches are published to ``/en/branch-slug`` endpoints.
+Though a UI element, Read the Docs allows reads to understand and switch between different versions of a software project.
+
+Overall, the key innovation of Read the Docs is the generic automation of versioned documentation deployment that has enabled thousands of open source developers to maintain documentation with minimal overhead.
+
+.. LSST would also use `Read the Docs`_ to deploy documentation if not for complications involved in automatically building our software stack as a prerequisite for automatically generating the API reference documentation.
+.. Numpydoc_ is a Sphinx_ extension that inspects Python docstrings to generate accurate and well-organized API references.
+.. To accomplish this docstring inspection, Numpydoc_ must be able to *import* the code being documented from within Python.
+.. In other words, generating documentation requires that the software being documented be built and installed.
+.. Naturally, `Read the Docs`_ accomplishes this by running a Python package's ``setup.py install`` command, which installs the package's dependencies, triggers builds of any C extensions, and finally installs the Python package itself.
+
+.. Since LSST uses Scons and Eups rather than Python's standard Setuptools/Distutils (i.e., a ``setup.py`` file) in its build process, standard tools such as `Read the Docs`_ do not know how to build LSST software.
+.. We are compelled, then, to build an equivalent of the `Read the Docs`_ service to build and deploy documentation for LSST's Eups and Scons-based software projects.
+
+Beyond Read the Docs
+--------------------
+
+LSST Data Management deployed as many of 32 documentation projects on `Read the Docs`_, including the `DM Developer Guide`_, several stand-alone Python projects, and technical notes (see `SQR-000: The LSST DM Technical Note Publishing Platform`__).
+This experience allowed us to be better understand our documentation deployment needs, and culminated in the design and implementation of a new documentation deployment platform, *LSST the Docs*.
+
+.. __: http://sqr-000.lsst.io
+
+Our experience underscored two categories of documentation deployment needs: first that we need to own the documentation build environments, and secondly that we require deeper integration and automation with respect to our development workflow.
+
+Owning the build environment is the most important, and in fact, blocked us from publishing the LSST Science Pipelines documentation on Read the Docs.
+Software documentation projects require that the software itself be built and available to the documentation build tool.
+Sphinx_, and Numpydoc_ in particular, inspect the docstrings of installed code to automatically build accurate API reference documentation.
+Continuous integration also requires that the software be installed to test examples and tutorials.
+`Read the Docs`_ assumes that Python projects can be built with Python's standard Setuptools/Distutils (i.e., a ``setup.py`` file).
+The LSST Science Pipelines build process does not follow this architecture, and instead uses EUPS_ to coordinate the versioning of tens of GitHub repositories and Scons_ to compile the software.
+Simply put, the LSST Science Pipelines build process is incompatible with Read the Docs.
+
+Another challenge was the scalability of administration for Read the Docs-hosted projects.
+This challenge was particularly accurate with LSST Technotes.
+Each technote was implemented as its own Read the Docs project.
+To encourage the adoption of Technotes, a single DM team member was responsible for configuring a new Read the Docs project and requisite DNS configuration.
+While this ensured consistent configuration, it created a bottleneck in Technote publication.
+In some cases, DM team members forgot or didn't read enough of the documentation to realize they needed to ask the administrator to create their Read the Docs project.
+Ideally, documentation project provisioning should be fully automated, perhaps even as a ChatOps command.
+
+In day-to-day development work, this administration model was also a bottleneck.
+For each development branch, the developer would have to ask the administrator to create a new branch build so that the documentation could be previewed in development and code review.
+Often times, developers would never see their rendered documentation until it was merged, sometimes resulting in obvious formatting errors on the published ``master`` branch documentation.
+Alternatively, developers would rely upon GitHub's rendering of reStructuredText file.
+Developers who did this were often confused about rendering errors, not realizing that GitHub does not render the extended reStructuredText syntax available to Sphinx.
+Instead, we want new versions of documentation to be published immediately and automatically for each branch.
+
+In response to these challenges, the Science Quality and Reliability Engineering (SQuaRE) Team in LSST Data Management undertook the design and engineering of *LSST the Docs*, a platform for the continuous delivery of documentation.
+
+This technote describes the architecture of *LSST the Docs*.
+Those wishing to operate an instance of *LSST the Docs*, or produce content for a project published by *LSST the Docs*, should also refer to the documentation listed in :ref:`additional-reading`.
 
 LSST the Docs: a microservice architecture
 ==========================================
 
-This document describes our implementation of a continuous documentation distribution service that accommodates the LSST Stack's Eups-based package architecture.
-We call this system *LSST the Docs*, or LTD.
+In setting out to design *LSST the Docs*, we realized that the short-comings of both the original LSST Science Pipelines documentation deployment scripts and Read the Docs stemmed from their integrated architectures.
+The Pipelines documentation deployment script was deeply integrated with the architecture of the LSST Science Pipelines and its build environment, making it impossible to adapt to other projects.
+Read the Docs, on the other hand provided a common build and publication pipeline, yet that build environment was not flexible enough for all projects.
 
-LSST the Docs is implemented as a collection of new and adapted *microservices*.
-A microservice architecture provides isolation of implementation details.
-For example, the service that builds the software stack needs to know about Eups, but isolates that complexity from the services that build the documentation and track published versions of the documentation.
-The microservices communicate with each other through well-specified interfaces.
-This architecture provides efficiency to the development team in that each component can be developed and maintained independently.
+Instead, *LSST the Docs* is designed as a set of microservices.
+Each service has a clear, well-defined responsibility along with well-defined interfaces between them.
+This gives *LSST the Docs* the flexibility to host several a range of documentation projects, from simple Sphinx projects to multi-repository EUPS-based software stacks.
+In fact, *LSST the Docs* is agnostic of the documentation build tool; a LaTeX document could be published as easily as a full Sphinx documentation project.
+This microservice architecture also improves development efficiency since each component can be updated independently of the others.
+We also take advantage of standard third-party infrastructure wherever possible.
 
-The diagram below describes the components of LSST the Docs, and how they interface with each other.
+The main components of *LSST the Docs* are `LTD Mason`_, `LTD Keeper`_, Amazon Web Services S3 and Route 53, and Fastly_.
+:numref:`fig-ltd-arch` shows how these services operate together.
+
+.. _fig-ltd-arch:
 
 .. figure:: /_static/ltd_arch.svg
 
-   Architecture of LSST the Docs (LTD).
+   Architecture of LSST the Docs (LTD) when specifically used to deploy documentation for the EUPS-based LSST Science Pipelines.
+   Other projects might use other build platforms such as Travis CI, and even their own HTML compilation tools.
+   LTD Mason provides the common interface for delivering built HTML to LSST the Docs.
 
-In short, LSST the Docs consists of a service, ``ltd-mason``, that runs as an afterburner to the Jenkins software build server.
-The ``ltd-keeper`` is a RESTful application that manages versions of published documentation and coordinates cloud resources.
-Documentation data is stored in the cloud on Amazon S3.
-The Fastly_ content distribution network, powered by Varnish_, is used to map versions of documentation in an S3 bucket to highly intuitive URLs.
+In brief, a documentation deployment begins with `LTD Mason`_, which is intended to be run on existing on a project's existing continuous integration server, such as Jenkins or the publicly-hosted Travis CI, that is triggered by pushes to GitHub.
+Not only does this strategy absolve *LSST the Docs* from maintaining build environments, it also follows our philosophy of treating documentation as code.
+
+Mason is a standard Python package that is usually installed in a continuous integration environment like Jenkins or Travis.
+Mason's primary responsibility is to upload documentation builds onto Amazon S3.
+Mason is also optionally capable of driving complex multi-repository documentation build (this functionality gives Mason its name).
+
+`LTD Keeper`_ is a RESTful web application that maintains a database of documentation projects (an arbitrary number of projects can be hosted by an *LSST the Docs* deployment).
+Keeper coordinates all services, such as directing Mason uploads to S3, registering project domains on Route 53, and purging content from the Fastly_ cache.
+Other projects, such as the `LSST DocHub`_, can use the LTD Keeper API to discover documentation projects and their published versions.
+
+Finally, Fastly_ is a third-party content distribution network that serves documentation to readers.
+In addition to making content delivery fast and reliable, Fastly_ allows LSST the Docs to serve highly intuitive URLs for versioned documentation.
+
+The remainder of this technote will discuss each aspect of LSST the Docs in further details.
 
 Walk-through of LSST the Docs
 -----------------------------
@@ -494,6 +543,22 @@ TODO
      These endpoints are meant to be transient.
      The :ref:`ltd-keeper <ltd-keeper>` service is responsible for deleting these development docs once they have become stale over a set time period (likely because the branch has been merged).
 
+.. _additional-reading:
+
+Additional Reading
+==================
+
+- The LTD Mason documentation: https://ltd-mason.lsst.io.
+- The LTD Keeper documentation: https://ltd-keeper.lsst.io.
+- Resources for documentation writers in the LSST DM Developer Guide: https://developer.lsst.io.
+
+.. _LTD Mason: https://ltd-mason.lsst.io
+.. _LTD Keeper: https://ltd-keeper.lsst.io
+.. _LSST DocHub: http://sqr-011.lsst.io/en/latest/#a-documentation-index
+.. _EUPS: https://github.com/RobertLuptonTheGood/eups
+.. _Scons: http://scons.org
+.. _DM Development Workflow: http://developer.lsst.io/en/latest/processes/workflow.html
+.. _DM Developer Guide: http://developer.lsst.io
 .. _Sphinx: http://sphinx-doc.org
 .. _Read the Docs: http://readthedocs.org
 .. _GitHub Service Hook: https://developer.github.com/webhooks/#service-hooks
