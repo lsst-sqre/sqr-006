@@ -292,13 +292,27 @@ The result is a built static HTML site.
 
 .. _ltd-mason-uploads:
 
-LTD Mason Documentation Uploads to S3
-=====================================
+LTD Mason Documentation Uploads
+===============================
 
-Once documentation is compiled into a static website consisting of HTML, CSS, images, and other assets, LTD Mason uploads those resources to LSST the Doc's S3 bucket.
+Once documentation is compiled into a static website consisting of HTML, CSS, images, and other assets, LTD Mason uploads those resources to LSST the Doc's Amazon Web Services S3 bucket.
 
-- Handshake with LTD Keeper
-- Surrogate Key, Cache Control, ACL and content type headers 
+.. - Handshake with LTD Keeper
+.. - Surrogate Key, Cache Control, ACL and content type headers 
+
+The upload process is governed by a handshake with the LTD Keeper API server.
+When a LTD Mason instance wants to upload a new documentation build it sends a `POST /products/(slug)/builds/ <https://ltd-keeper.lsst.io/products.html#post--products-(slug)-builds->`_ request.
+The request body describes what Git branch this documentation corresponds to, and the request URL specifies the documentation Product maintained by LTD Keeper.
+The response from LTD Keeper to this request is a Build resource that specifies where this build should be uploaded in the S3 bucket, and what surrogate key header to attach to uploaded documentation artifacts, among other metadata.
+
+LTD Mason uses boto3_ to upload static documentation sites to S3. 
+During this upload, LTD Mason gives every object a ``public-read`` Access Control List header to facilitate API access by Fastly.
+``content-type`` and ``encoding-type`` headers are also set, based on :func:`mimetypes.guess_type`, to enable gzip compression on Fastly.
+Finally, the ``x-amz-meta-surrogate-key`` header is set according to the Build resource returned by the LTD Keeper request.
+This `surrogate key allows individual documentation builds to be purged <#>`_ from the Fastly CDN. FIXME internal link
+
+Once the upload is complete, LTD Mason notifies LTD Keeper by sending a `PATCH request to the build resource <https://ltd-keeper.lsst.io/builds.html#patch--builds-(int-id)>`_ that changes the ``uploaded`` field from ``false`` to ``true``.
+
 
 .. _ltd-mason-travis:
 
