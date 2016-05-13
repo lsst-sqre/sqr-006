@@ -146,6 +146,73 @@ In addition to making content delivery fast and reliable, Fastly_ allows LSST th
 
 The remainder of this technote will discuss each aspect of LSST the Docs in further details.
 
+LTD Mason for Multi-Repository EUPS Documentation Projects
+==========================================================
+
+The 
+
+LTD Mason on Travis
+===================
+
+Although LTD Mason can run documentation builds for EUPS-based projects, not all projects use EUPS.
+In fact, not all projects will even use Sphinx.
+For such generic projects, Travis CI is a popular continuous integration environment.
+LTD Mason provides an alternative command line interface, ``ltd-mason-travis`` specifically for publishing documentation from a Travis environment.
+In this mode, LTD Mason can upload *any* static website to LSST the Docs, regardless of the tooling used to create that site.
+
+The `LTD Mason documentation <https://ltd-mason.lsst.io/travis.html>`__ describes how to configure LTD Mason to publish documentation built on Travis.
+The following is an realistic example Travis configuration :file:`.travis.yml` for a Python project that is also publishing documentation to LSST the Docs:
+
+.. code-block:: yaml
+   :linenos:
+   :emphasize-lines: 11-14,19-23
+
+   sudo: false
+   language: python
+   python:
+     - '2.7'
+     - '3.4'
+     - '3.5'
+     - '3.5-dev'
+   matrix:
+     allow_failures:
+       - python: "3.5-dev"
+     include:
+       # This is the ltd-mason documentation deployment build
+       - python: "3.5"
+         env: LTD_MASON_BUILD=true
+   install:
+     - pip install -r requirements.txt
+     - pip install ltd-mason
+     - pip install -e .
+   script:
+     - py.test --flake8 --cov=ltdmason
+     - sphinx-build -b html -a -n -W -d docs/_build/doctree docs docs/_build/html
+   after_success:
+     - ltd-mason-travis --html-dir docs/_build/html
+   env:
+     global:
+       - LTD_MASON_BUILD=false  # disable builds in regular text matrix
+       - LTD_MASON_PRODUCT="ltd-mason"
+       # travis encrypt "LTD_MASON_AWS_ID=... LTD_MASON_AWS_SECRET=... LTD_KEEPER_URL=... LTD_KEEPER_USER=... LTD_KEEPER_PASSWORD=..." --add env.global 
+       - secure: "CIpaoNzWwEQngjmj0/OQBRUOnkT9Rq8273N5ZgXmZTtVSliukfJMROQnp9m42x3a2XFamaYV60mmuAvMRNU8VHi4nePxF2vp7utVnp8cF4zFQQzL6KnN2rqWv0H3Snqc1sfMT2n4H9qgBlYG7w5Cv52VIXdwh8MqGSxl8HAiYgqcVNJ+q1Rxeb1Yk+Bv3VW6O0/K4AlrhGY2Gl/zbwgM4ph0K0UvT1IZg8ZjCdddOpgwxPq66kvzHNcpCR6JUnvy5vRVH+IgC83Ar+oJqOA/4pizcFccriLF7nANkVJMrRSL8B1h2IHuuGYpC2VzDPMlAuEPmU6t8QAhVCOq9BSy98902TgKkvt4enPcxS2iNqMoOJSNUW7q9yqvVacz4JApJfHWlq5K7uTy00p4XHV4TUs+9NEgBUCwEFE5CXcRQvg+Y2y1wqUUkH+12nb1Nv4CdGxG6k7yG+eM+qmANJ87jZK9vX0RmDLKXuA3gpJyVomrAKX1+MqqwD0Qu885AUsHCQevO+oDmXv6nKLK/x2ZeyHQrgWISj3LXU6B7LarLrqsrE7JWTwgo/iX6xiVHS422tj94/+rab3JarBWe+ntdG9rZBdILU92kLqzgMA570ryVxtsnu8GnzOB0/3yvdtW+duAgrrBUusBcg9E/Kz/68Cm5RbMLyjaeA6HxP6mfM4="
+
+Several aspects of this :file:`.travis.yml` example are relevant to LSST the Docs users.
+First, an extra build is added to the testing matrix where the environment variable ``LTD_MASON_BUILD`` is explicitly set to ``true``.
+Since the ``ltd-mason-travis`` command is always run in the ``after_success`` phase of a Travis build, the ``LTD_MASON_BUILD`` environment variable helps ensure that only one build follows through on documentation publication.
+
+We recommend running Sphinx in the ``script`` phase.
+This allows errors in the documentation build to fail the entire build; which is likely desirable behavior.
+In fact, ``sphinx-build`` is run with the ``-a -W`` flags that both turns 'warnings' into errors, and elevates missing references into errors.
+Note how ``sphinx-build`` is entirely separate from ``ltd-mason-travis``; any static site builder could be used.
+
+Finally, in the ``env.global`` section, `LTD Mason is configured through several environment variables <https://ltd-mason.lsst.io/travis.html#environment-variables-and-secrets>`_.
+Travis's `encrypted environment variable feature <https://docs.travis-ci.com/user/encryption-keys/>`_ is used to to securely store credentials for AWS S3 and LTD Keeper.
+The private key needed to decrypt these fields is known only to Travis and is directly associated with the GitHub repository.
+In other words, forks of a repository cannot gain access, and publish to, LSST the Docs.
+
+****
+
 Walk-through of LSST the Docs
 -----------------------------
 
