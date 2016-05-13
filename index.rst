@@ -146,10 +146,161 @@ In addition to making content delivery fast and reliable, Fastly_ allows LSST th
 
 The remainder of this technote will discuss each aspect of LSST the Docs in further details.
 
+.. _ltd-mason-eups:
+
 LTD Mason for Multi-Repository EUPS Documentation Projects
 ==========================================================
 
-The 
+The role of LTD Mason in LSST the Docs is to register and upload new documentation builds from the continuous integration environment to AWS S3.
+But since LSST the Docs was initially created specifically to build documentation for multi-repository EUPS, we added optional affordances to LTD Mason to build such projects.
+Note that LTD Mason can also be used for non EUPS projects, see :ref:`ltd-mason-travis`.
+
+For EUPS projects, documentation exists in two strata: in the repositories of individual EUPS packages, and in the product's doc repo.
+
+The role of documentation embedded in packages is to document/teach the APIs and tasks that are maintained in that specific package.
+Co-locating documentation in the code's Git repository ensures that documentation is versioned in step with the code itself.
+The documentation for a package should also be independently buildable by a developer, locally.
+Although broken cross-package links may be inevitable with local builds, such local builds are critical for the productivity of documentation writers.
+
+The product's doc repo is a Sphinx project that produces the coherent documentation structure for a Stack product itself, such as ``lsst_apps`` or ``qserv``.
+It establishes the overall table of contents that links into package documentation, and also contains its own content that applies at a Stack product level.
+The product doc repo, in fact, is the lone Sphinx project seen by the Sphinx builder; content from each package is linked at compile time into the umbrella documentation repo.
+
+The product's doc repo is not distributed by Eups to end-users, so it is not an Eups package.
+Instead, Eups tags for releases are mapped to branch names in the product doc repo.
+
+.. _eups-pkg-organization:
+
+Package documentation organization
+----------------------------------
+
+To effect the integration of package documentation content into the umbrella documentation repo, each package must follow the following layout:
+
+.. code-block:: text
+
+   <package_name>/
+      # ...
+      doc/
+         Makefile
+         conf.py
+         index.rst
+         # ...
+         _static/
+            <package_name>/
+               <image files>...
+
+The role of the :file:`doc/Makefile`, :file:`doc/conf.py` and :file:`doc/index.rst` files are solely to allow local builds.
+
+.. _eups-doc-product-organization:
+
+Product documentation organization
+----------------------------------
+
+When ``ltd-mason`` builds documentation for an EUPS product, it links documentation resources from individual package repositories into a cloned copy of the product's documentation repository.
+In Data Management's Jenkins environment, the Git repositories for each EUPS package are available on the filesystem through `lsstsw <http://developer.lsst.io/en/latest/build-ci/lsstsw.html>`.
+
+Given the structure of individual packages described above, links are made from main product documentation repo as so:
+
+.. code-block:: text
+
+   <product_doc_repo>/
+     Makefile
+     conf.py
+     index.rst
+     # ...
+     <package_1>/
+       index.rst -> /<package_1>/doc/index.rst
+       # ...
+     <package_2>/
+       index.rst -> /<package_2>/doc/index.rst
+       # ...
+     _static/
+       <package_1>/ -> /<package_1>/doc/_static/<package_1>
+       <package_2>/ -> /<package_2>/doc/_static/<package_2>
+       # ...
+
+Note how, in this scheme, the absolute paths to static assets in the :file:`_static/` directory is unchanged whether a packages documentation is built alone, or integrated into the EUPS product.
+
+Once a EUPS product's documentation is linked, it is built by LTD Mason like any other Sphinx project.
+
+The Build's YAML Manifest interface to LTD Mason
+------------------------------------------------
+
+Although ``ltd-mason`` runs on Jenkins in the Stack build environment, ``ltd-mason`` is not integrated tightly with LSST's build technologies (Eups and Scons).
+This choice allows our build system to evolve independently of the Stack build environment, and can even be accommodate non-Eups based build environments.
+
+The interface layer that bridges the software build system (``buildsstsw.sh``) to the documentation build system (``ltd-mason``) is a Manifest file, formatted as YAML.
+Note that this YAML manifest is the sole input to ``ltd-mason``, besides environment variable-based configurations.
+
+A minimal example of the manifest:
+
+.. literalinclude:: _static/manifest.yaml
+   :language: yaml
+
+`A formal schema for this YAML manifest file <https://github.com/lsst-sqre/ltd-mason/blob/master/manifest_schema.yaml>`_ is available in the LTD Mason repository.
+For reference, the fields are:
+
+product_name
+   This is the slug identifier that maps to a Product resource in ``ltd-keeper``.
+   For Eups-based projects, this should correspond to the Stack meta-package name (e.g., ``lsst_apps``).
+
+build_id
+   A string uniquely identifying the Jenkins build.
+   Typically this is a monotonically increasing (or time-sortable) number.
+
+refs
+   This is the set of branches or tags that a user entered upon triggering a Jenkins build of the software.
+   E.g. ``[tickets/DM-XXXX, tickets/DM-YYYY]``.
+   This field defines is used by ``ltd-keeper`` to map documentation Builds to Editions.
+
+requester_github_handle
+   This is an optional field that can contain the GitHub username of the person requesting the build.
+   If provided, this will be used to notify the build requester through Slack.
+
+doc_repo.url
+   The Git URL of the product's documentation repository.
+   For single repository software projects (or technical notes), this will be the repository of the software or technote itself.
+
+doc_repo.ref
+   This is the Git reference (commit, tag or branch) to checkout from the product's documentation repository.
+
+packages
+   This field consists of key-value objects for each package in an Eups-based multi-package software product.
+   The keys correspond to the names of individual packages (and the Git repository name in the github.com/lsst organization)
+
+   packages.<pkg_name>.dir
+      Local directory where the package was installed in :file:`lsstsw/`.
+   
+   packages.<pkg_name>.url
+      URL of the package's Git repository on GitHub
+
+   packages.<pkg_name>.ref
+      Git reference (typically a branch name) that was cloned and installed by lsstsw.
+
+Summary of the documentation build process for EUPS-based projects
+------------------------------------------------------------------
+
+Given the input file, ``ltd-mason`` runs the following process to build an EUPS-based software product's HTML documentation:
+
+1. Clone the product's documentation repo and checkout the appropriate Git reference (based on the YAML manifest's ``doc_repo`` key).
+
+2. Link the `doc/` directories of each installed package (in :file:`lsstsw/install/`) to the cloned product documentation repository (see :ref:`eups-doc-product-organization`).
+
+3. Run a Sphinx build of the complete product documentation with :command:`sphinx-build`.
+
+The result is a built static HTML site.
+
+.. _ltd-mason-uploads:
+
+LTD Mason Documentation Uploads to S3
+=====================================
+
+Once documentation is compiled into a static website consisting of HTML, CSS, images, and other assets, LTD Mason uploads those resources to LSST the Doc's S3 bucket.
+
+- Handshake with LTD Keeper
+- Surrogate Key, Cache Control, ACL and content type headers 
+
+.. _ltd-mason-travis:
 
 LTD Mason on Travis
 ===================
@@ -210,279 +361,6 @@ Finally, in the ``env.global`` section, `LTD Mason is configured through several
 Travis's `encrypted environment variable feature <https://docs.travis-ci.com/user/encryption-keys/>`_ is used to to securely store credentials for AWS S3 and LTD Keeper.
 The private key needed to decrypt these fields is known only to Travis and is directly associated with the GitHub repository.
 In other words, forks of a repository cannot gain access, and publish to, LSST the Docs.
-
-****
-
-Walk-through of LSST the Docs
------------------------------
-
-To understand how LSST the Docs works, we can walk through a documentation build and publishing process.
-We'll explore specific aspects of LSST the Docs in greater depth later in this document.
-
-Stack build phase on Jenkins with `buildlsstsw.sh`
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Documentation builds begin on LSST's Jenkins system, ``ci.lsst.io``.
-As is already the case, a user triggers a build of the LSST Stack by entering what Eups product should be built (e.g., `lsst_apps``) along with specific development branches (e.g., ``tickets/DM-9999``) to pull from.
-Jenkins triggers the ``buildlsstsw.sh`` script, which in turn runs lsstsw's rebuild command to clone the Stack repositories, then build and test the Stack itself via Eups and Scons commands.
-
-This *existing service* does two useful things for the documentation build.
-First, the Stack is built and installed (such that it is importable as a Python package) with the full checked-out source available on a file system.
-Second, the :command:`scons doc` command produces Doxygen XML artifacts for each package.
-
-Documentation build phase with `ltd-mason`
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-When the build is complete, ``buildlsstsw.sh`` calls ``ltd-mason``, which also runs on Jenkins.
-The role of ``ltd-mason`` is to combine documentation sources from each package's locally cloned Git repository and run Sphinx_\ ’s ``sphinx-build`` command to compile a static documentation website (see ).
-The interface between ``buildlsstsw.sh`` and ``ltd-mason`` is a well-specified YAML-encoded manifest file that tells ``ltd-mason`` about the documentation project that the user is building, what version of the documentation is being built, and where each cloned package repository can be found on the Jenkins file system (see :ref:`yaml-manifest`).
-In this way, ``ltd-mason`` is fully isolated from any dependency on Eups or Scons (and likewise, the LSST Stack is isolated from any dependency on Sphinx and related Python tools).
-
-Documentation build publishing phase with `ltd-mason`, `ltd-keeper` and S3
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Run by ``ltd-mason``, Sphinx_ yields a static documentation website.
-``ltd-mason`` registers this build with ``ltd-keeper``, a RESTful web application that manages the state of documentation publications, by sending a ``POST /products/<product>/builds/`` request.
-``ltd-keeper`` replies with information about the S3 bucket and bucket 'directory' where files for this documentation build should be uploadeded.
-
-See :ref:`ltd-keeper` for further details about the ``ltd-keeper`` application and API
-
-Publishing documentation editions with ltd-keeper and Fastly
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Notice that ``ltd-mason``\ ’s scope is only to upload discrete *builds* of a software product's documentation to S3.
-
-However, ``ltd-mason`` passes on information from the YAML manifest about the version composition of the software being documented.
-These documentation builds might reflect the latest ``master`` branches of the software, a development ticket branch, or even updated documentation for previous software releases
-LSST the Docs supports publishing several multiple versions of a product's documentation simultaneously through the concept of documentation *Editions*.
-Editions have a fixed URL, but can have updated content.
-
-.. TODO: add reference to Product / Build / Edition resource
-
-``ltd-keeper`` watches for new builds that correspond to an Edition, and automatically updates the Edition by serving the Edition from the new build.
-Fastly and its Varnish layer allows us to point an Edition to a new build in S3.
-See :ref:`s3-hosting` for further details.
-
-Documentation maintenance and discovery via the `ltd-keeper` API
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Once documentation is published, there will be several consumers of information about the available editions of documentation.
-The ``ltd-keeper`` API and internal code is designed to accommodate these use cases, such as:
-
-- React components in DM documentation and websites will send ``GET products/<product>/versions`` requests to ``ltd-keeper`` to populate lists of available documentation.
-- A build cleanup service to remove old developer documentation versions builds.
-
-In the remaining sections of this document we explore individual components mentioned in the walk-through of LSST the Docs in greater detail.
-
-.. _doc-source:
-
-Structure of documentation repositories and sources
-===================================================
-
-Documentation repositories
---------------------------
-
-Documentation exists in two strata: in the repositories of individual Stack packages, and in the product's doc repo.
-
-The role of documentation embedded in packages is to document/teach the APIs and tasks that are maintained in that specific package.
-Co-locating documentation in the code's Git repository ensures that documentation is versioned in step with the code itself.
-The documentation for a package should also be independently buildable by a developer, locally.
-Although broken cross-package links are inevitable with local builds, such local builds are critical for the productivity of documentation writers.
-
-The product's doc repo is a Sphinx project that produces the coherent documentation structure for a Stack product itself, such as ``lsst_apps`` or ``qserv``.
-It establishes the overall table of contents that links into package documentation, and also contains its own content that applies at a Stack product level.
-The product doc repo, in fact, is the lone Sphinx project seen by the Sphinx builder; content from each package is linked at compile time into the umbrella documentation repo.
-
-The product's doc repo is not distributed by Eups to end-users, so it is not an Eups package.
-Instead, Eups tags for releases are mapped to branch names in the product doc repo.
-
-.. _doc-source-pkg-organization:
-
-Package documentation organization
-----------------------------------
-
-To effect the integration of package documentation content into the umbrella documentation repo, each package must follow the following layout:
-
-.. code-block:: text
-
-   <package_name>/
-      # ...
-      doc/
-         Makefile
-         conf.py
-         index.rst
-         # ...
-         _static/
-            <package_name>/
-               <image files>...
-
-The role of the :file:`doc/Makefile`, :file:`doc/conf.py` and :file:`doc/index.rst` files are solely to allow local builds.
-
-.. _doc-product-organization:
-
-Product documentation organization
-----------------------------------
-
-When ``ltd-mason`` builds documentation for a product, it links documentation resources from individual package repositories into a cloned copy of the product's documentation repository.
-
-The links are arranged as so:
-
-.. code-block:: text
-
-   <product_doc_repo>/
-     Makefile
-     conf.py
-     index.rst
-     # ...
-     <package_1>/
-       index.rst -> /<package_1>/doc/index.rst
-       # ...
-     <package_2>/
-       index.rst -> /<package_2>/doc/index.rst
-       # ...
-     _static/
-       <package_1>/ -> /<package_1>/doc/_static/<package_1>
-       <package_2>/ -> /<package_2>/doc/_static/<package_2>
-       # ...
-
-See :ref:`ltd-mason` for further details about the documentation build process.
-
-..
-  .. _sconsutils-modifications:
-  
-  Overview of the Jenkins-hosted build system
-  ===========================================
-  
-  How Jenkins builds and tests the stack
-  --------------------------------------
-  
-  TODO.
-  
-  Modifying sconsUtils to build Doxygen XML
-  -----------------------------------------
-  
-  Our C++ API reference uses Doxygen to inspect the C++ source and Breathe_ to bridge Doxygen's output to Sphinx autodoc.
-  Breathe_ operates specifically on Doxygen's XML output.
-  We have modified the Doxygen builder in `sconsUtils's builders.py <https://github.com/lsst/sconsUtils/blob/u/jonathansick/new-docs/python/lsst/sconsUtils/builders.py>`_ to generate this XML during the normal ``scons doc`` build target.
-  
-  .. literalinclude:: snippets/scons_doxygen_builder.py
-     :language: python
-     :emphasize-lines: 9
-  
-  Generated XML is installed in the ``<package_name>/doc/XML/`` directory.
-  
-  This modification is currently available in the ``u/jonathansick/new-docs`` branch of ``sconsUtils``.
-
-  .. _lsstsw-modifications:
-  
-  Modifications to buildlsstsw.sh
-  -------------------------------
-  
-  TODO.
-  
-  ``buildlsstsw.sh`` will be modified to call :ref:`ltd-mason <ltd-mason>` to initiate a documentation build.
-  The interface between ``buildlsstsw.sh`` and :ref:`ltd-mason <ltd-mason>` is a YAML-encoded file or stream.
-
-.. _ltd-mason:
-
-The `ltd-mason` documentation build service
-===========================================
-
-``ltd-mason`` is a Python command line application that operates on the Jenkins build server, and is an after-burner for the regular software build process.
-``ltd-mason``\ ’s source is available on GitHub at https://github.com/lsst-sqre/ltd-mason.
-
-.. _yaml-manifest:
-
-The `buildlsstsw.sh` - `ltd-mason` YAML Manifest interface
-----------------------------------------------------------
-
-Although ``ltd-mason`` runs on Jenkins in the Stack build environment, ``ltd-mason`` is not integrated tightly with LSST's build technologies (Eups and Scons).
-This choice allows our build system to evolve independently of the Stack build environment, and can even be accomodate non-Eups based build envionments.
-
-The interface layer that bridges the software build system (``buillsstsw.sh``) to the documentation build system (``ltd-mason``) is a Manifest file, formatted as YAML.
-Note that this YAML manifest is the sole input to ``ltd-mason``, besides a security key configuration files. 
-
-A minimal example of the manifest:
-
-.. literalinclude:: _static/manifest.yaml
-   :language: yaml
-
-The fields are:
-
-product_name
-   This is the slug identifier that maps to a Product resource in ``ltd-keeper``.
-   For Eups-based projects, this should correspond to the Stack meta-package name (e.g., ``lsst_apps``).
-
-build_id
-   A string uniquely identifying the Jenkins build.
-   Typically this is a monotonically increasing (or time-sortable) number.
-
-refs
-   This is the set of branches or tags that a user entered upon triggering a Jenkins build of the software.
-   E.g. ``[tickets/DM-XXXX, tickets/DM-YYYY]``.
-   This field defines is used by ``ltd-keeper`` to map documentation Builds to Editions.
-
-requester_github_handle
-   This is an optional field that can contain the GitHub username of the person requesting the build.
-   If provided, this will be used to notify the build requester through Slack.
-
-doc_repo.url
-   The Git URL of the product's documentation repository.
-   For single repository software projects (or technical notes), this will be the repository of the software or technote itself.
-
-   *FIXME: is this necessary since the information is available in ltd-keeper?*
-
-doc_repo.ref
-   This is the Git reference (commit, tag or branch) to checkout from the product's documentation repository.
-
-packages
-   This field consists of key-value objects for each package in an Eups-based multi-package software product.
-   The keys correspond to the names of individual packages (and the Git repository name in the github.com/lsst organization)
-
-   packages.<pkg_name>.dir
-      Local directory where the package was installed in :file:`lsstsw/`.
-   
-   packages.<pkg_name>.url
-      URL of the package's Git repository on GitHub
-
-   packages.<pkg_name>.ref
-      Git reference (typically a branch name) that was cloned and installed by lsstsw.
-
-.. _ltd-mason-build:
-
-Documentation build process
----------------------------
-
-Given the input file, ``ltd-mason`` runs the following process to build a software product's HTML documentation:
-
-1. Clone the product's documentation repo and checkout the appropriate Git reference (based on  the YAML ``doc_repo`` key).
-
-2. Link the `doc/` directories of each installed package (in :file:`lsstsw/install/`) to the cloned product documentation repository (see :ref:`doc-source-pkg-organization`).
-
-   In the product documentation repository, the package doc links are:
-
-   .. code-block:: text
-
-      <product_doc_repo>/
-         # ...
-         <package_name>/
-            # link to contents of <package_repo>/doc/
-            # except _static/
-         _static/
-            # ...
-            <package_name>/ -> <package_repo>/doc/_static/
-
-3. Run a Sphinx build of the complete product documentation with :command:`sphinx-build`.
-
-The result is a build static HTML site.
-The next section describes how ``ltd-mason`` publishes this documentation to the web..
-
-.. _ltd-mason-publishing:
-
-Documentation publishing process
---------------------------------
-
-TODO
 
 .. _ltd-keeper:
 
