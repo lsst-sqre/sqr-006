@@ -119,7 +119,7 @@ In fact, *LSST the Docs* is agnostic of the documentation build tool; a LaTeX do
 This microservice architecture also improves development efficiency since each component can be updated independently of the others.
 We also take advantage of standard third-party infrastructure wherever possible.
 
-The main components of *LSST the Docs* are `LTD Mason`_, `LTD Keeper`_, Amazon Web Services S3 and Route 53, and Fastly_.
+The main components of *LSST the Docs* are `LTD Mason`_, `LTD Keeper`_, Amazon Web Services S3 and Route 53, and `Fastly`_.
 :numref:`fig-ltd-arch` shows how these services operate together.
 
 .. _fig-ltd-arch:
@@ -138,11 +138,11 @@ Mason's primary responsibility is to upload documentation builds onto Amazon S3.
 Mason is also optionally capable of driving complex multi-repository documentation build (this functionality gives Mason its name).
 
 `LTD Keeper`_ is a RESTful web application that maintains a database of documentation projects (an arbitrary number of projects can be hosted by an *LSST the Docs* deployment).
-Keeper coordinates all services, such as directing Mason uploads to S3, registering project domains on Route 53, and purging content from the Fastly_ cache.
+Keeper coordinates all services, such as directing Mason uploads to S3, registering project domains on Route 53, and purging content from the `Fastly`_ cache.
 Other projects, such as the `LSST DocHub`_, can use the LTD Keeper API to discover documentation projects and their published versions.
 
-Finally, Fastly_ is a third-party content distribution network that serves documentation to readers.
-In addition to making content delivery fast and reliable, Fastly_ allows LSST the Docs to serve highly intuitive URLs for versioned documentation.
+Finally, `Fastly`_ is a third-party content distribution network that serves documentation to readers.
+In addition to making content delivery fast and reliable, `Fastly`_ allows LSST the Docs to serve highly intuitive URLs for versioned documentation.
 
 The remainder of this technote will discuss each aspect of LSST the Docs in further details.
 
@@ -487,7 +487,183 @@ As an alternative, LSST the Docs may in the future `set the canonical URL of pag
 
    Link: <https://example.lsst.io/index.html>; rel="canonical"
 
-.. _fastly:
+.. _fastly-cdn:
+
+Serving Versioned Documentation for Unlimited Projects with Fastly
+==================================================================
+
+The previous section laid out the URL architecture of documentation projects hosted on LSST the Docs.
+This section focuses on the practical implementation of documentation delivery to the reader.
+
+Besides serving beautiful URLs, LSST the Doc's hosting design is governed by two key requirements.
+First, LSST the Docs must be capable of serving an arbitrarily large number of documentation projects, along with an arbitrarily large number of versions of those documentation projects.
+Second, web page delivery must be fast and reliable.
+Since documentation consumption is an integral aspect of LSST development work, any documentation download latency or downtime is unacceptable.
+Finally, LSST the Docs will host highly public documentation projects, such as documentation for LSST data releases.
+LSST the Docs must scale to any web-scale traffic load.
+
+To meet these requirements, LSST the Docs uses two managed services: Amazon Web Services S3 and the Fastly_ content distribution network.
+
+The role of S3 is to authoritatively store all documentation sites hosted by LSST the Docs.
+When readers visit an ``lsst.io`` site, they do not directly interact with S3, but rather with Fastly_.
+As a content distribution network, Fastly_ has `points of presence <https://www.fastly.com/services/modern-network-design>`_ distributed globally.
+When a page from LSST the Docs is requested for the first time, Fastly_ retrieves the page from S3 and forwards it the original requester.
+At the same time, Fastly caches the page in all of its points of presence.
+The next time the same page is requested, the Page is served directly from the nearby Fastly point of presence.
+By bringing the documentation content closer to the reader, regardless of where on Earth the reader is, LSST the Docs can deliver content with less latency.
+
+.. _s3-bucket:
+
+Organization of documentation in S3
+-----------------------------------
+
+Amazon Web Services S3 is commonly used to host static web sites, such as those that can be hosted on LSST the Docs.
+Static web pages are conceptually simple to serve since individual files on the servers filesystem map directly to URLs.
+S3 specifically provides a cost effective static site hosting solution that is highly available and resilient to any traffic load.
+
+S3 even includes a setting to turn its buckets into `statically hosted public websites <http://docs.aws.amazon.com/AmazonS3/latest/dev/WebsiteHosting.html>`_.
+In this approach, the S3 bucket's URL is named after the domain the site is served from.
+For LSST the Docs, this would imply that each documentation project would need its own bucket in order to be served from its own subdomain.
+Creating so many buckets, especially autonomously, is not a scalable approach since Amazon puts a soft-limit of 100 buckets per AWS account.
+
+Instead of using multiple S3 buckets, we adopted a scalable solution advocated by Seth Vargo of HashiCorp where `multiple sites are stored in a single S3 bucket but served separately through Fastly <https://www.hashicorp.com/blog/serving-static-sites-with-fastly.html>`_.
+
+Files for each documentation project are stored in separate root directories of the common S3 bucket.
+The names of these directories match the projects' subdomains.
+For example:
+
+.. code-block:: text
+
+   /
+     sqr-000/
+     sqr-001/
+     ...
+
+Within these project directories, builds are stored in a ``/builds`` subdirectory, and editions are stored in ``/v/`` directories.
+For example,
+
+.. code-block:: text
+
+   /
+     sqr-012/
+       builds/
+         1/
+           index.html
+         2/
+           index.html
+         ...
+       v/
+         main/
+           index.html
+         DM-5458/
+           index.html
+     ...
+
+This path architecture purposefully mirrors the :ref:`URL architecture <urls>`.
+This enables Fastly to serve multiple sites and builds or editions thereof by transforming the requested URL into URL in the S3 bucket.
+This mechanism is described in the next section.
+
+.. _fastly-vcl-url-rewrites:
+
+Re-writing URLs in Varnish Control Language
+-------------------------------------------
+
+Every request to Fastly is processed by Varnish_.
+Varnish is an open source caching HTTP reverse proxy.
+Varnish gives LSST the Docs a great deal of flexibility since each HTTP request is processed in the Varnish Configuration Language (VCL), which is an extensible Turing-complete programming language.
+
+Thus when a request is received, Varnish uses regular expressions to map the requested URL to a URL in the S3 origin bucket.
+The follow tables describes the three types of URLs that need to be supported.
+
+.. table::
+
+   +---------+-------------------------------------------------+-------------------------------------------------------------------------+
+   | Type    | Request URL                                     | S3 Origin URL                                                           |
+   +=========+=================================================+=========================================================================+
+   | default | ``https://example.lsst.io/``                    | ``{{ bucket }}.s3.amazonaws.com/example/v/main/index.html``             |
+   +---------+-------------------------------------------------+-------------------------------------------------------------------------+
+   | edition | ``https://example.lsst.io/v/{{ edition }}/``    | ``{{ bucket }}.s3.amazonaws.com/example/v/{{ edition }}/index.html``    |
+   +---------+-------------------------------------------------+-------------------------------------------------------------------------+
+   | build   | ``https://example.lsst.io/builds/{{ build }}/`` | ``{{ bucket }}.s3.amazonaws.com/example/builds/{{ build }}/index.html`` |
+   +---------+-------------------------------------------------+-------------------------------------------------------------------------+
+
+This is URL manipulation is accomplished with approximately the following VCL code:
+
+.. literalinclude:: includes/rewrites.vcl
+   :emphasize-lines: 6,12-17,19-24
+   :linenos:
+
+On line 6, the domain is changed from ``*.lsst.io`` to the bucket's API endpoint.
+
+In the next highlight section, we detect any URL path (stored in the ``req.url`` variable) and test if it does not start with ``/v/`` or ``/build/``, meaning that the default documentation is being requested.
+In that case, the path is re-written such that ``req.url`` is relative to the ``/v/main/`` subdirectory of a product in the S3 bucket (the default edition is an alias for ``/v/main/``).
+The directory of the product is obtained from the subdomain of the original request domain (``req.http.Fastly-Orig-Host``).
+
+For regular edition or build URLs, all that must be done is combine the product name extracted from ``req.http.Fastly-Orig-Host`` with the ``req.url`` to obtain the path in the S3 bucket.
+
+Replicating web server behavior from S3's REST API
+--------------------------------------------------
+
+We configured Fastly to obtained resources through its `REST endpoint <http://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region>`_ (e.g., ``{{ bucket }}.s3.amazonaws.com``) rather than the S3 website endpoint (e.g., ``s3-website-us-east-1.amazonaws.com/{{ bucket }}``).
+The advantage of using the REST endpoint is that communications between Fastly and S3 are encrypted with TLS, preventing a 'man-in-the-middle' attack.
+
+Using the REST endpoint, on the other hand, means forgoing some conveniences from a webserver built intending to service web browsers.
+For example, a ``example.lsst.io/`` path does not automatically imply ``example.lsst.io/index.html``.
+Instead, these conveniences must be built into the VCL logic.
+
+For example, the code to re-write a directory URL to the :file:`index.html` document is
+
+.. literalinclude:: includes/index-rewrite.vcl
+
+Redirecting Read the Docs URLs
+------------------------------
+
+When LSST the Docs was launched, tens of LSST documents were already being published with Read the Docs.
+Whereas LSST the Docs serves default documentation from the root URL, ``example.lsst.io/``, Read the Docs always exposes a version name in its URLs.
+The default edition is ``example.lsst.io/en/latest/``.
+The prevent broken URLs, we coded the VCL to send a 301 permanent HTTP redirect response to any path beginning with ``/en/latest/``.
+
+In ``vcl_recv``, the deprecated URL is detected:
+
+.. code-block:: text
+
+   if( req.url ~ "^/en/latest" ) {
+     error 900 "Fastly Internal";
+   } 
+
+This internal error (code 900) is caught in ``vcl_error``:
+
+.. code-block:: text
+
+   if (obj.status == 900 ) {
+     set obj.http.Content-Type = "";   
+     synthetic {""};
+     return(deliver);
+  }
+
+and finally in ``vcl_deliver``:
+
+.. literalinclude:: includes/rtd-redirect.vcl
+
+Sending a 301 redirect rather than silently re-writing the URL improves search engine optimization since the canonical URL is enforced.
+
+Serving HTTPS to the browser
+----------------------------
+
+Another convenience of Fastly is that web pages are encrypted to the browser with TLS (that is, served over HTTPS).
+LSST the Docs uses a shared wildcard certificate to serve all ``*.lsst.io`` domains.
+
+Although HTTP requests are accepted, we configured Fastly to redirect HTTP requests to HTTPS so that all communications are encrypted.
+
+Non-TLS requests are detected early in the ``vcl_recv`` block with the ``Fastly-SSL`` header passed from Fastly's TLS terminator to the caching layer:
+
+.. literalinclude:: includes/force-ssl-recv.vcl
+
+Note how ``req.http.host`` is reset to the original host (``*.lsst.io``) rather than the S3 hostname.
+
+This 801 error is serviced in ``vcl_error``:
+
+.. literalinclude:: includes/force-ssl-error.vcl
 
 .. _ltd-keeper:
 
@@ -541,7 +717,7 @@ Editions are lightweight pointers to Builds.
 An Edition is updated by re-pointing to a different Build using the `POST /v1/editions/(int: id)/rebuild <http://ltd-keeper.lsst.io/en/tickets-dm-4950/editions.html#post--v1-editions-(int-id)-rebuild>`_ method.
 When an Edition is re-built, no files are moved.
 Instead ``ltd-keeper`` modified the Varnish cache layer provided by Fastly to re-route URLs for an edition to a new build in the S3 bucket.
-See :ref:`s3-hosting` for more information.
+See :ref:`fastly-cdn` for more information.
 
 See the `/editions/ resource documentation <http://ltd-keeper.lsst.io/en/tickets-dm-4950/editions.html>`_ for a full listing of the methods and metadata associated with an Edition.
 
