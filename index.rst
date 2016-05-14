@@ -667,20 +667,62 @@ This 801 error is serviced in ``vcl_error``:
 
 .. _ltd-keeper:
 
-The `ltd-keeper` microservice for managing documentation lifecycles and version discovery
-=========================================================================================
+LTD Keeper API
+==============
 
-``ltd-keeper`` is a backend microservice that has a database of available documentation versions, a RESTful API so that these documentation versions can be managed and discovered, and hooks into Cloud resources (AWS S3 and Route 53, Fastly, Slack and GitHub).
+`LTD Keeper`_ is a microservice that plays a central coordination and automation role in LSST the Docs.
+It is implemented as a Python 3 web application, built upon the Flask_ microframework.
+As shown in :numref:`fig-ltd-arch`, LTD Keeper directly interacts with AWS S3 (storage), AWS Route53 (DNS) and Fastly_ (CDN).
+LTD Keeper also maintains an SQL database of all documentation products, editions and builds.
+Clients can interact with LTD Keeper resources, and trigger actions, through a RESTful HTTP API.
+LTD Mason is the original client of this API.
 
-The source is available on GitHub at https://github.com/lsst-sqre/ltd-keeper.
-User and DevOps documentation for ``ltd-keeper`` is available at https://ltd-keeper.lsst.io. 
+LTD Keeper's API is documented at https://ltd-keeper.lsst.io. 
+This section will describe the API resources and methods broadly; those writing clients should consult the API reference documentation.
+
+.. _ltd-keeper-auth:
+
+LTD Keeper Authentication and Authorization
+-------------------------------------------
+
+LTD Keeper, at the moment, generally accepts anonymous read requests to facilitate clients that discovery documentation through the API.
+HTTP methods that change state (``POST``, ``PUT`` and ``PATCH``) require the client to be both authenticated an authorized.
+
+Authentication is implemented with HTTP basic auth.
+Registered clients have a username and password.
+Clients send these credential in the basic auth header to the `POST /token <https://ltd-keeper.lsst.io/auth.html#get--token>`_ API endpoint to receive a temporary auth token.
+This auth token is used for all other API endpoints.
+
+Users are also assigned different authorization roles.
+These roles are:
+
+.. table::
+
+   +---------------------+-------------------------------------------------------+
+   | Role                | Description                                           |
+   +=====================+=======================================================+
+   | ``ADMIN_USER``      | Can create a new API user, view API users, and modify |
+   |                     | API user permissions.                                 |
+   +---------------------+-------------------------------------------------------+
+   | ``ADMIN_PRODUCT``   | Can add, modify and deprecate Products.               |
+   +---------------------+-------------------------------------------------------+
+   | ``ADMIN_EDITION``   | Permission to add, modify and deprecate Editions.     |
+   +---------------------+-------------------------------------------------------+
+   | ``UPLOAD_BUILD``    | Permission to create a new Build.                     |
+   +---------------------+-------------------------------------------------------+
+   | ``DEPRECATE_BUILD`` | Permission to deprecate a Build.                      |
+   +---------------------+-------------------------------------------------------+
+
+A given user can have several roles, although users should be given only the minimum permission set to accomplish their activities.
+For example, the user accounts used by LTD Mason only have the ``UPLOAD_BUILD`` role.
 
 .. _ltd-keeper-resources:
 
-`ltd-keeper` API resources and concepts
----------------------------------------
+API resources
+-------------
 
 As a RESTful application, ``ltd-keeper`` makes resources available through URL endpoints that can be acted upon with HTTP methods.
+The main resources are Products, Builds, and Editions.
 
 .. _ltd-keeper-products:
 
@@ -688,54 +730,52 @@ Products
 ^^^^^^^^
 
 Products, ``/products/`` are the root resource.
-A product corresponds to a software projects (such as ``lsst_apps`` or qserv) or a pure documentation project, such as a technical note or design document.
+A product corresponds to a software project (such as ``lsst_apps`` or Qserv) or a pure documentation project, such as a technical note or design document.
+Each product is served from its own subdomain of ``lsst.io``.
 
-An administrator creates a new Product with `POST /products/ <khttp://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#post--v1-products->`_ and retrieves information about a single product with `GET /v1/products/(slug) <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#get--v1-products-(slug)>`_.
-A listing of all products is obtained with `http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#get--v1-products- <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#get--v1-products->`_.
+An administrator creates a new Product with `POST /products/ <https://ltd-keeper.lsst.io/products.html#post--products->`_.
+When a new Product is created, LTD Keeper configures a CNAME DNS entry for that product's subdomain to the Fastly endpoint.
+LTD Keeper also automatically creates an Edition called ``main`` that :ref:`serves documentation from the root URL <default-url>`.
 
-See the `/products/ resource documentation <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html>`_ for a full listing of the methods and metadata associated with a Product.
+Information about a single product can be retrieved with `GET /products/(slug) <https://ltd-keeper.lsst.io/products.html#get--products-(slug)>`_.
+A listing of all products is obtained with `GET /products/ <https://ltd-keeper.lsst.io/products.html#get--products->`_.
+
+See the `/products/ resource documentation <https://ltd-keeper.lsst.io/products.html>`_ for a full listing of the methods and metadata associated with a Product.
 
 .. _ltd-keeper-builds:
 
 Builds
 ^^^^^^
 
-Builds are discrete, immutable uploads of a Product's documentation created with ``ltd-mason``.
+Builds are discrete, immutable uploads of a Product's documentation, typically uploaded by LTD Mason.
+:ref:`The process of uploading a build <ltd-mason-uploads>` is described above.
 
-Builds are created with a `POST /v1/products/(slug)/builds/ <http://ltd-keeper.lsst.io/en/tickets-dm-4950/products.html#post--v1-products-(slug)-builds->`_.
+Build resources contain a ``surrogate_key`` that corresponds to the surrogate key HTTP header set by LTD Mason.
+Through this surrogate key, Fastly can purge a build from its cache.
 
-See the `/builds/ resource documentation <http://ltd-keeper.lsst.io/en/tickets-dm-4950/builds.html>`_ for a full listing of the methods and metadata associated with a Build.
+Build resources also contain a ``git_refs`` field, which is a list of Git branches that describe the documentation version.
+(Note that ``git_refs`` is a list type to accommodate multi-repository projects).
+Editions use this ``git_refs`` field to identify builds that can be used by an edition.
+
+Builds for a single Product can be discovered through the `GET /products/(slug)/builds/ <https://ltd-keeper.lsst.io/products.html#get--products-(slug)-builds->`_ endpoint
 
 .. _ltd-keeper-editions:
 
 Editions
 ^^^^^^^^
 
-Editions are documentation published to the end-user with consistent URLs corresponding to a semantic version such as a release ('v1'), the HEAD of development ('latest') or even a ticket branch ('tickets-dm-nnnn').
+Editions are documentation published from `branches of a Git repository <edition-urls>` (e.g. ``example.lsst.io/v/{{ branch }}``.
+Editions have a ``slug`` that corresponds to the Git branch name (though not necessarily; the slug does define the URL of the Edition).
+Editions also have a ``tracked_refs`` field that lists the set of Git branches for which the Edition serves documentation.
+As well, Editions have a pointer to the build that they are currently publishing, as well as a surrogate key.
+This surrogate key is separate from the one used by the Build, and instead allows an Edition to be reliably purged from Fastly.
 
-Editions are lightweight pointers to Builds.
-An Edition is updated by re-pointing to a different Build using the `POST /v1/editions/(int: id)/rebuild <http://ltd-keeper.lsst.io/en/tickets-dm-4950/editions.html#post--v1-editions-(int-id)-rebuild>`_ method.
-When an Edition is re-built, no files are moved.
-Instead ``ltd-keeper`` modified the Varnish cache layer provided by Fastly to re-route URLs for an edition to a new build in the S3 bucket.
-See :ref:`fastly-cdn` for more information.
-
-See the `/editions/ resource documentation <http://ltd-keeper.lsst.io/en/tickets-dm-4950/editions.html>`_ for a full listing of the methods and metadata associated with an Edition.
-
-..
-  Periodic maintenance tasks
-  --------------------------
-  
-  Ancillary to the ``ltd-keeper`` web app that serves the RESTful API would be worker tasks that are triggered periodically to maintain the documentation.
-  Celery can be used to mange these tasks.
-  
-  One such task would examine the ``date_last_modified`` for each of all ``branch``-type versions of documentation, and delete any version that has not been updated within a set time period.
-
-.. _s3-hosting:
-
-Serving multiple documentation products and editions from S3 with Fastly
-========================================================================
-
-.. _hosting-service:
+An edition can be updated by uploading new Builds with ``git_refs`` fields that match the ``tracked_refs`` field of the Edition.
+Whenever a new build it posted, LTD Keeper automatically checks if that build corresponds to an Edition (which it should).
+If so, the old Edition is delete and the new build is copied to the Edition's :ref:`location in the S3 bucket <s3-bucket>`.
+During this copy the surrogate key header in files is change from that of the Build to the Edition.
+By associating a stable surrogate key to an Edition, purges are easy to carry out.
+In fact, LTD Keeper purges the Edition from the Fastly cache whenever an edition is changed.
 
 Build storage on AWS S3
 -------------------------------------
