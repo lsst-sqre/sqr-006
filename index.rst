@@ -376,6 +376,119 @@ Travis's `encrypted environment variable feature <https://docs.travis-ci.com/use
 The private key needed to decrypt these fields is known only to Travis and is directly associated with the GitHub repository.
 In other words, forks of a repository cannot gain access, and publish to, LSST the Docs.
 
+.. _urls:
+
+Versioned Documentation URLs
+============================
+
+LSST the Docs is designed to host an arbitrary number of documentation projects, along with an arbitrary number of versions documentation.
+
+LSST the Docs serves each documentation project under its own subdomain
+of ``lsst.io``.
+For example, ``sqr-000.lsst.io`` or ``ltd-keeper.lsst.io``.
+These subdomains are memorable, and allow documentation to be referred to without need for a link shortener.
+This URL model also concurs with the recent practice by Apple's Safari browser to collapse the entire URL to just the domain in the location bar.
+
+Also note that LSST the Docs publishes specifically to ``lsst.io`` rather than ``lsst.org``.
+This is because LSST the Docs requires programmatic access to a domain's DNS settings, and the ``lsst.io`` domain allows us to do that without interfering with ``lsst.org``'s operations.
+Our intention is to brand ``lsst.io`` as synonymous with 'LSST Documentation.'
+
+.. _default-url:
+
+The default documentation edition
+---------------------------------
+
+From the root url for a documentation product, for example ``https://example.lsst.io/``, LSST the Docs serves what is considered to be the 'default' version of the documentation.
+By default, this is documentation built from the ``master`` branch of a Git repository.
+This choice can be changed on a per-project basis for strategic reasons.
+For example, a software project may choose to serve documentation from a stable release branch at the root URL.
+
+.. _edition-urls:
+
+Additional editions for Git branches
+------------------------------------
+
+LSST the Docs serves separate editions of documentation for each branch of the project's parent repository.
+These editions are served from a ``/v/`` path off of the root domain.
+For example, a branch named ``v1`` would be served from ``https://example.lsst.io/v/v1/``.
+
+For `ticket branches <http://developer.lsst.io/en/latest/processes/workflow.html#ticket-branches>`_ used by Data Management (e.g., ``tickets/DM-1234``), LSST the Docs transforms that branch name to create more convenient edition URLs: ``https://example.lsst.io/v/DM-1234/``.
+
+Editions are created automatically for every new branch (they are provisioned on-demand when LTD Mason :ref:`POSTs a build <ltd-mason-uploads>` from a new Git branch).
+We believe that this automation will be incredible useful for code reviews.
+For any pull request is will be unambiguous where corresponding documentation can be found.
+Making documentation more visible in code reviews should improve the culture of documentation within Data Management.
+
+.. _build-urls:
+
+Archived documentation builds
+-----------------------------
+
+LSST the Docs stores every documentation build uploaded as an immutable object that is never deleted, by default.
+When a new documentation build is uploaded by LTD Mason, that build exists *alongside* the previous documentation builds rather than replacing them.
+These individual builds are available from the ``/builds/`` path off the root domain. For example, the first build would be available at ``https://example.lsst.io/builds/1/``.
+
+Having persistent build available serves two purposes.
+First, it allows "A/B" comparisons of documentation during development.
+During a code review, or debugging session, a developer can link to individual builds corresponding to individual pushes to GitHub.
+
+Second, keeping builds available makes it possible for older builds to be hot-swapped into the role of serving an edition of the documentation should a build for an edition be broken.
+If old builds were not available the only recourse we be to rebuild and re-upload the documentation from scratch.
+If the documentation is somehow broken, this may not be a quick recovery operation.
+With persistent builds, recovery to a known 'good' build is immediate.
+
+.. _url-discovery:
+
+Discovery of available editions and builds
+------------------------------------------
+
+A reader of an LSST the Docs-published project will likely want a convenient interface for discovering and switching between the available editions and even builds.
+Such services are enabled by LTD Keeper's RESTful API. FIXME link
+
+One type of interface would be edition switching interface elements embedded in published HTML pages.
+Such interface elements are specific to the front-end architecture of documents published on LSST the Docs, and are out of scope of this document.
+
+Another type of interface would be dashboard pages that dynamically list metadata about available editions and builds.
+Though not yet implemented, we envision that such pages would be available at
+
+.. code-block:: text
+
+   https://example.lsst.io/v/index.html
+
+for editions of a documentation project and
+
+.. code-block:: text
+
+   https://example.lsst.io/builds/index.html
+
+for builds of a documentation project.
+These dashboards would leverage data from the LTD Keeper API, and be rendered entirely on the client with React_, or example.
+
+In addition, we anticipate that the LTD Keeper API will be consumed by `DocHub <http://sqr-011.lsst.io/en/latest/#a-documentation-index>`_, a propose LSST-wide API for documentation discovery.
+With DocHub and the LTD Keeper API, documentation projects and their main editions would be dynamically listed from LSST documentation landing pages.
+
+.. _seo:
+
+Presenting versioned documentation to search engines
+----------------------------------------------------
+
+Having so many instances of a documentation sites is detrimental to those site's ranking in search engines such as Google.
+Furthermore, we likely want a potential documentation reader to always land on the :ref:`default edition <default-url>` of the documentation.
+These objectives can be achieved by setting the page's canonical URL in the HTML of documentation: 
+
+.. code-block:: html
+
+   <link rel="canonical" href="https://example.lsst.io/index.html">
+
+Note that this will require modification of the HTML presentation of projects published on LSST the Docs.
+As an alternative, LSST the Docs may in the future `set the canonical URL of pages it serves through an HTTP header <https://support.google.com/webmasters/answer/139066?hl=en&rd=1#6>`_:
+
+.. code-block:: http
+
+   Link: <https://example.lsst.io/index.html>; rel="canonical"
+
+.. _fastly:
+
 .. _ltd-keeper:
 
 The `ltd-keeper` microservice for managing documentation lifecycles and version discovery
@@ -528,3 +641,5 @@ Additional Reading
 .. _lsstsw: https://github.com/lsst/lsstsw
 .. _Fastly: https://www.fastly.com
 .. _Varnish: https://www.varnish-cache.org
+.. _boto3: http://boto3.readthedocs.io/en/latest/
+.. _React: https://facebook.github.io/react/
