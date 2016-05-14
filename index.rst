@@ -467,7 +467,7 @@ These dashboards would leverage data from the LTD Keeper API, and be rendered en
 In addition, we anticipate that the LTD Keeper API will be consumed by `DocHub <http://sqr-011.lsst.io/en/latest/#a-documentation-index>`_, a propose LSST-wide API for documentation discovery.
 With DocHub and the LTD Keeper API, documentation projects and their main editions would be dynamically listed from LSST documentation landing pages.
 
-.. _seo:
+.. _canonical-urls:
 
 Presenting versioned documentation to search engines
 ----------------------------------------------------
@@ -721,15 +721,15 @@ For example, the user accounts used by LTD Mason only have the ``UPLOAD_BUILD`` 
 API resources
 -------------
 
-As a RESTful application, ``ltd-keeper`` makes resources available through URL endpoints that can be acted upon with HTTP methods.
-The main resources are Products, Builds, and Editions.
+As a RESTful application, LTD Keeper makes resources available through URL endpoints that can be acted upon with HTTP methods.
+The main resources are Products_, Builds_, and Editions_.
 
 .. _ltd-keeper-products:
 
 Products
 ^^^^^^^^
 
-Products, ``/products/`` are the root resource.
+Products_ (``/products/``) are the root resource.
 A product corresponds to a software project (such as ``lsst_apps`` or Qserv) or a pure documentation project, such as a technical note or design document.
 Each product is served from its own subdomain of ``lsst.io``.
 
@@ -747,15 +747,15 @@ See the `/products/ resource documentation <https://ltd-keeper.lsst.io/products.
 Builds
 ^^^^^^
 
-Builds are discrete, immutable uploads of a Product's documentation, typically uploaded by LTD Mason.
+Builds_ are discrete, immutable uploads of a Product's documentation, typically uploaded by LTD Mason.
 :ref:`The process of uploading a build <ltd-mason-uploads>` is described above.
 
 Build resources contain a ``surrogate_key`` that corresponds to the surrogate key HTTP header set by LTD Mason.
-Through this surrogate key, Fastly can purge a build from its cache.
+Through this surrogate key, Fastly can purge a specific build from its cache.
 
-Build resources also contain a ``git_refs`` field, which is a list of Git branches that describe the documentation version.
+Build resources also contain a ``git_refs`` field, which is a list of Git branches that describe the documentation's version.
 (Note that ``git_refs`` is a list type to accommodate multi-repository projects).
-Editions use this ``git_refs`` field to identify builds that can be used by an edition.
+This ``git_refs`` field to identify Builds that can be published through an Edition.
 
 Builds for a single Product can be discovered through the `GET /products/(slug)/builds/ <https://ltd-keeper.lsst.io/products.html#get--products-(slug)-builds->`_ endpoint
 
@@ -764,84 +764,67 @@ Builds for a single Product can be discovered through the `GET /products/(slug)/
 Editions
 ^^^^^^^^
 
-Editions are documentation published from `branches of a Git repository <edition-urls>` (e.g. ``example.lsst.io/v/{{ branch }}``.
-Editions have a ``slug`` that corresponds to the Git branch name (though not necessarily; the slug does define the URL of the Edition).
+Editions are documentation published from :ref:`branches of a Git repository <edition-urls>` (e.g. ``example.lsst.io/v/{{ branch }}``.
+The :ref:`default documentation published at the root URL <default-url>` is also an Edition.
+
+Editions have a ``slug`` that corresponds to the both the Edition's :ref:`subdirectory in S3 <s3-bucket>` and the :ref:`Edition's URL path <edition-urls>`.
 Editions also have a ``tracked_refs`` field that lists the set of Git branches for which the Edition serves documentation.
-As well, Editions have a pointer to the build that they are currently publishing, as well as a surrogate key.
-This surrogate key is separate from the one used by the Build, and instead allows an Edition to be reliably purged from Fastly.
+The ``slug`` is typically derived from ``tracked_refs``, though not necessarily.
+For example, LSST the Docs includes a rule to transform ticket branch names like ``tickets/DM-1234`` into readable slugs like ``DM-1234``.
 
-An edition can be updated by uploading new Builds with ``git_refs`` fields that match the ``tracked_refs`` field of the Edition.
-Whenever a new build it posted, LTD Keeper automatically checks if that build corresponds to an Edition (which it should).
-If so, the old Edition is delete and the new build is copied to the Edition's :ref:`location in the S3 bucket <s3-bucket>`.
-During this copy the surrogate key header in files is change from that of the Build to the Edition.
+As well, Editions have a pointer to the Build that they are currently publishing, as well as a surrogate key.
+This surrogate key is separate from the one used by the Build, and instead allows a specific Edition to be reliably purged from Fastly's cache.
+
+Updating Editions with new Builds
+"""""""""""""""""""""""""""""""""
+
+An Edition can be updated by uploading new Builds with ``git_refs`` fields that match the ``tracked_refs`` field of the Edition.
+Whenever a new build it posted, LTD Keeper automatically checks if that build corresponds to an Edition.
+An edition can also be manually 're-built' sending a `PATCH request to the Edition resource <https://ltd-keeper.lsst.io/editions.html#patch--editions-(int-id)>`_ that contains a new ``build_url``.
+This feature is useful for scenarios where a new Build is broken and the Edition needs to be reset to a previous Build without needing to upload a completely new Build.
+
+When an Edition is being updated, the old copy of the Edition is deleted and the new build is copied to the Edition's :ref:`location in the S3 bucket <s3-bucket>`.
+During this copy, the surrogate key metadata in the files is changed from that of the Build to the Edition.
 By associating a stable surrogate key to an Edition, purges are easy to carry out.
-In fact, LTD Keeper purges the Edition from the Fastly cache whenever an edition is changed.
+Indeed, once the new build is copied into the Edition's directory, LTD Keeper purges the Edition from the Fastly cache.
+This means that during the copy there is no downtime since content served from Fastly's cache; once the copy is complete the updated Edition is served.
 
-Build storage on AWS S3
--------------------------------------
+This purge is accomplished by LTD Keeper through the Fastly API, `POST
+/service/{{id}}/purge/{{key}} <https://docs.fastly.com/api/purge#purge_077dfb4aa07f49792b13c87647415537>`_.
 
-TODO
+.. _ltd-keeper-kubernetes:
 
-..
-  Since Sphinx_ generates static files, there is no need to have a live webserver (such as Nginx or Apache) running a web application involved in hosting.
-  Instead we can can use a static file server.
-  Our preference is to use a commodity cloud file host, such as Amazon S3 or GitHub pages, since those are far more reliable and have less downtime than any resources that LSST DM can provide in house at this time.
-  GitHub Pages has the advantage of being free with an automatically-configured CDN.
-  However, S3 is more flexible and fits better with our team's DevOps experience.
+LTD Keeper Deployment with Kubernetes
+=====================================
 
-.. _directory-structure:
-
-Serving documentation Editions with Fastly
-------------------------------------------
-
-TODO
-
-..
-  .. note::
-  
-     Would it be preferably for each version to live in its own S3 bucket, and be served from independent *subdomains*?
-  
-  A requirement of our documentation platform is that multiple versions of the documentation must be served simultaneously to support each version of the software.
-  `Read the Docs`_ exposes versioning to its users in two ways:
-  
-  1. Each version of the documentation is served from a sub-directory.
-     The root endpoint, ``/``, for the documentation site's domain redirects, by default, to the ``lateset/`` directory of docs that reflects the ``master`` Git branch of the software's Git repository.
-  2. From the documentation website, the user switch between versions of the documentation with a dropdown menu widget (e.g., implemented in React).
-  
-  The former is accomplished for LSST's doc platform by defining a directory structure that accommodates the classes of documentation versions we support, while the latter will be powered by the :ref:`ltd-keeper <ltd-keeper>`\ 's RESTful API for documentation discovery in conjunction with front-end engineering in the documentation website itself (which is outside the scope of this technical note).
-  
-  Here we define the directory structure of an LSST software documentation site:
-  
-  ``/``
-     The root endpoint will redirect to ``/latest/``.
-  
-  ``/latest/``
-     This documentation will be rebuilt whenever a Stack package (or the umbrella documentation repository) has new commits on the collective ``master`` Git branches.
-  
-  ``/<tag>/``
-     Any tagged version of the software (such as a weekly build or a formal release) has a corresponding hosted version of documentation.
-     The directories that these docs are hosted from are named after the Git or Eups tag itself.
-  
-  ``/<branches>/``
-     On our Jenkins page, http://ci.lsst.codes, developers can enter either a single branch or a series of branch names that the build system then obtains in a priority cascade for each package (defaulting to ``master`` branches) to compose the built stack product.
-     The documentation served for these developer-triggered build should be identified by the same sequence of branch names.
-     For example, a build of ``users/jsick/special-project, tickets/DM-9999`` would be hosted from ``/users-jsick-special-project-tickets-dm-9999/``.
-     Note the normalization of the branch names into URLs.
-  
-     These endpoints are meant to be transient.
-     The :ref:`ltd-keeper <ltd-keeper>` service is responsible for deleting these development docs once they have become stale over a set time period (likely because the branch has been merged).
 
 .. _additional-reading:
 
-Additional Reading
-==================
+Additional Resources
+====================
 
-- The LTD Mason documentation: https://ltd-mason.lsst.io.
-- The LTD Keeper documentation: https://ltd-keeper.lsst.io.
+- LTD Mason
+  
+  - Source code: https://github.com/lsst-sqre/ltd-mason
+  - Documentation: https://ltd-mason.lsst.io.
+
+- LTD Keeper
+
+  - Source code: https://github.com/lsst-sqre/ltd-keeper.
+  - Documentation: https://ltd-keeper.lsst.io.
+
+LSST the Docs is part of a greater LSST Data Management documentation and communications strategy.
+For more information:
+
+- `SQR-000: The LSST DM Technical Note Publishing Platform <http://sqr-000.lsst.io>`_.
+- `SQR-011: LSST Data Management Communication & Publication Platforms <http://sqr-011.lsst.io>`_.
 - Resources for documentation writers in the LSST DM Developer Guide: https://developer.lsst.io.
 
 .. _LTD Mason: https://ltd-mason.lsst.io
 .. _LTD Keeper: https://ltd-keeper.lsst.io
+.. _Products: https://ltd-keeper.lsst.io/products.html
+.. _Builds: https://ltd-keeper.lsst.io/builds.html
+.. _Editions: https://ltd-keeper.lsst.io/editions.html
 .. _LSST DocHub: http://sqr-011.lsst.io/en/latest/#a-documentation-index
 .. _EUPS: https://github.com/RobertLuptonTheGood/eups
 .. _Scons: http://scons.org
@@ -859,3 +842,4 @@ Additional Reading
 .. _Varnish: https://www.varnish-cache.org
 .. _boto3: http://boto3.readthedocs.io/en/latest/
 .. _React: https://facebook.github.io/react/
+.. _Flask: http://flask.pocoo.org
