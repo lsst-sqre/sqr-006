@@ -658,6 +658,13 @@ This 801 error is serviced in ``vcl_error``:
 
 .. literalinclude:: includes/force-ssl-error.vcl
 
+Serving Gzip-compressed content
+-------------------------------
+
+We have configured Fastly to serve text-based content with Gzip compression.
+Specifically, HTML, CSS, JavaScript, web font, JSON, XML and SVG content is compressed en route to the browser.
+This reduces bandwidth and creates a better user experience.
+
 .. _ltd-keeper:
 
 LTD Keeper API
