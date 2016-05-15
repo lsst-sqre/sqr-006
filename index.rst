@@ -665,6 +665,54 @@ We have configured Fastly to serve text-based content with Gzip compression.
 Specifically, HTML, CSS, JavaScript, web font, JSON, XML and SVG content is compressed en route to the browser.
 This reduces bandwidth and creates a better user experience.
 
+.. _fastly-cache-management:
+
+Managing Fastly and browser caching
+-----------------------------------
+
+Caches accelerate browsing performance.
+In *LSST the Docs* there is not one cache but two: Fastly, and the local cache maintained by a web browser.
+With caches there is a natural tendency between the lifetime of objects in a cache and ensuring that a browser is always displaying the most recent content.
+This section summarizes how *LSST the Docs* manages caches.
+Note that this cache logic is controlled both by the :ref:`LTD Mason upload phase <ltd-mason-uploads>` and :ref:`LTD Keeper's Edition updates <ltd-keeper-edition-updates>`.
+
+Controlling the Fastly cache with surrogate key purges
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+*LSST the Docs* ensures that Fastly points of presence retain data for as long as possible by either setting ``Cache-Control: max-age=31536000`` or ``x-amz-meta-surrogate-control: max-age=31536000`` (i.e., one year) in the headers of objects stored on S3.
+
+If content cached in Fastly needs to be updated, *LSST the Docs* is able to do so with a surrogate key purge.
+LTD Keeper assigns unique surrogate keys to every Build and Edition resource.
+When either LTD Mason or LTD Keeper add files to S3, these surrogate keys are inserted into the ``x-amz-meta-surrogate-key`` headers of objects.
+Thus when an :ref:`Edition is updated <ltd-keeper-edition-updates>`, for example, LTD Keeper is able to purge that Edition specifically through its surrogate key with the Fastly API: `POST
+/service/{{id}}/purge/{{key}} <https://docs.fastly.com/api/purge#purge_077dfb4aa07f49792b13c87647415537>`_.
+
+Controlling the browser's caching
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For maximum performance, the browser's cache must also be managed.
+By default, LTD Mason uploads objects with a ``Cache-Control: max-age=31536000`` header.
+This header applies to both Fastly and browsers.
+Since builds are immutable, such a potentially long-lived cache in the browser is acceptable.
+
+Editions have more complex caching requirements since objects at a given URL can be updated.
+In fact, for editions serving development branches, a developer will want the edition to reliably represent the most recent push to GitHub.
+To accomplish this, LTD Keeper alters the headers of objects in editions to include the following headers:
+
+.. code-block:: text
+
+   x-amz-meta-surrogate-control: max-age=31536000
+   Cache-Control: no-cache
+
+The ``x-amz-meta-surrogate-control`` header instructs Fastly to retain the edition in its caches for one year (or until purged). This `Surrogate Control key is only used by Fastly, and is not send to the browser <https://docs.fastly.com/guides/tutorials/cache-control-tutorial#surrogate-control>`_.
+This allows the ``Cache-Control`` header to exclusively manage browser caching.
+
+Here, ``Cache-Control: no-cache`` means that a browser *can* cache content, but that each request `must be re-validated by the server <https://developers.google.com/web/fundamentals/performance/optimizing-content-efficiency/http-caching#cache-control>`_ (Fastly).
+In this re-validation process, the browser provides Fastly with the `ETag <https://developers.google.com/web/fundamentals/performance/optimizing-content-efficiency/http-caching#validating-cached-responses-with-etags>`_ of the object in its cache.
+If that ETag matches the current version, Fastly responds with a content-less HTTP 304 response.
+Otherwise, Fastly returns the entire new object.
+This caching approach balances the needs of reducing network bandwidth while ensuring content is up-to-date, though at the expense of lightweight validation requests to Fastly.
+
 .. _ltd-keeper:
 
 LTD Keeper API
@@ -675,7 +723,7 @@ It is implemented as a Python 3 web application, built upon the Flask_ microfram
 As shown in :numref:`fig-ltd-arch`, LTD Keeper directly interacts with AWS S3 (storage), AWS Route53 (DNS) and Fastly_ (CDN).
 LTD Keeper also maintains an SQL database of all documentation products, editions and builds.
 Clients can interact with LTD Keeper resources, and trigger actions, through a RESTful HTTP API.
-LTD Mason is the original client of this API.
+LTD Mason is the original consumer of this API.
 
 LTD Keeper's API is documented at https://ltd-keeper.lsst.io. 
 This section will describe the API resources and methods broadly; those writing clients should consult the API reference documentation.
@@ -782,18 +830,17 @@ Updating Editions with new Builds
 
 An Edition can be updated by uploading new Builds with ``git_refs`` fields that match the ``tracked_refs`` field of the Edition.
 Whenever a new build it posted, LTD Keeper automatically checks if that build corresponds to an Edition.
-An edition can also be manually 're-built' sending a `PATCH request to the Edition resource <https://ltd-keeper.lsst.io/editions.html#patch--editions-(int-id)>`_ that contains a new ``build_url``.
+An edition can also be manually 're-built' by sending a `PATCH request to the Edition resource <https://ltd-keeper.lsst.io/editions.html#patch--editions-(int-id)>`_ that contains a new ``build_url``.
 This feature is useful for scenarios where a new Build is broken and the Edition needs to be reset to a previous Build without needing to upload a completely new Build.
 
 When an Edition is being updated, the old copy of the Edition is deleted and the new build is copied to the Edition's :ref:`location in the S3 bucket <s3-bucket>`.
 During this copy operation the surrogate key metadata in the files is changed from that of the Build to the Edition.
+Cache control headers are also modified to ensure that browsers request the latest version of any Edition.
 By associating a stable surrogate key to an Edition, purges are easy to carry out.
-Indeed, once the new build is copied into the Edition's directory, LTD Keeper purges the Edition from the Fastly cache.
+Indeed, once the new build is copied into the Edition's directory, LTD Keeper :ref:`purges the Edition from the Fastly cache <fastly-cache-management>`.
 This means that during the copy there is no downtime since content is served from Fastly's cache.
 Once the copy is complete, and the old build purged, the updated Edition is served.
-
-This purge is accomplished by LTD Keeper through the Fastly API, `POST
-/service/{{id}}/purge/{{key}} <https://docs.fastly.com/api/purge#purge_077dfb4aa07f49792b13c87647415537>`_.
+See the section :ref:`fastly-cache-management` for more details.
 
 .. _ltd-keeper-kubernetes:
 
