@@ -1,9 +1,11 @@
 :tocdepth: 1
 
+.. sectnum::
+
 Introduction
 ============
 
-Documentation is an integral deliverable of LSST Data Management's software development work, and is produced at all stages of development.
+Documentation is an integral deliverable of LSST Data Management's software development work, and is produced at all stages of our process.
 Before code is written, we document architecture designs, specifications, and experiments.
 While code is being written, documentation describes the implementation and interfaces, and makes the software approachable through user guides and tutorials.
 
@@ -415,8 +417,8 @@ For example, a branch named ``v1`` would be served from ``https://example.lsst.i
 For `ticket branches <http://developer.lsst.io/en/latest/processes/workflow.html#ticket-branches>`_ used by Data Management (e.g., ``tickets/DM-1234``), LSST the Docs transforms that branch name to create more convenient edition URLs: ``https://example.lsst.io/v/DM-1234/``.
 
 Editions are created automatically for every new branch (they are provisioned on-demand when LTD Mason :ref:`POSTs a build <ltd-mason-uploads>` from a new Git branch).
-We believe that this automation will be incredible useful for code reviews.
-For any pull request is will be unambiguous where corresponding documentation can be found.
+We believe that this automation will be incredibly useful for code reviews.
+For any pull request it will be unambiguous where corresponding documentation can be found.
 Making documentation more visible in code reviews should improve the culture of documentation within Data Management.
 
 .. _build-urls:
@@ -784,7 +786,7 @@ An edition can also be manually 're-built' sending a `PATCH request to the Editi
 This feature is useful for scenarios where a new Build is broken and the Edition needs to be reset to a previous Build without needing to upload a completely new Build.
 
 When an Edition is being updated, the old copy of the Edition is deleted and the new build is copied to the Edition's :ref:`location in the S3 bucket <s3-bucket>`.
-During this copy, the surrogate key metadata in the files is changed from that of the Build to the Edition.
+During this copy operation the surrogate key metadata in the files is changed from that of the Build to the Edition.
 By associating a stable surrogate key to an Edition, purges are easy to carry out.
 Indeed, once the new build is copied into the Edition's directory, LTD Keeper purges the Edition from the Fastly cache.
 This means that during the copy there is no downtime since content served from Fastly's cache; once the copy is complete the updated Edition is served.
@@ -797,11 +799,162 @@ This purge is accomplished by LTD Keeper through the Fastly API, `POST
 LTD Keeper Deployment with Kubernetes
 =====================================
 
+LTD Keeper is deployed in Docker containers orchestrated by Kubernetes_ on Google Container Engine.
+
+LSST the Docs as a manifestation of DevOps culture
+--------------------------------------------------
+
+Given that LTD Keeper is a relatively modest application, it may not have been unreasonable in some organizations to deploy the application manually.
+This process would likely involve provisioning a virtual machine, installing dependencies like Python on it, installing Nginx and uwsgi, installing the LTD Keeper application, and finally configuring all this software.
+The problem with this approach is that it does not scale.
+Each hand-configured server is a special snowflake with its own operational rules.
+Without extensive documentation, such applications cannot be managed by anyone on the team of than the person who originally configured it.
+
+The generic solution to this problem is to treat *infrastructure as code.*
+In this case, the infrastructure is completely specified in code that can be check into a Git repository and documented.
+Software (like Puppet_ and Terraform_) can apply this configuration to provision and manage servers.
+If a server breaks or an application needs to be updated, the operator simply applies or updates the configuration.
+Treating infrastructure as code dramatically improves service reliability, improves a team's operational efficiency, and makes it easier for a team to collectively manage production services.
+
+Infrastructure as code also gives rise to DevOps (developer/operations).
+In DevOps, an application's developers are also its operational administrators.
+SQuaRE, the team which builds LSST the Docs, is an excellent example of a DevOps team.
+Since we are a small, agile group, we cannot afford to hire staff who either only develop, or only operate, services.
+Another advantage of DevOps is that there are massive incentives for developers to write reliable, easy to maintain, services---otherwise developers would never have time to develop new features.
+Google's `Site Reliability Engineer <http://shop.oreilly.com/product/0636920041528.do>`_ program is an especially good example.
+Google SREs are only 'allowed' to spend 50% of their time operating services.
+If a service requires more operational effort, regular developers are temporarily drafted into an SRE team until systematic operational issues are resolved [Murphy2016]_.
+This feedback loop ensures that operational technical debt is kept in check.
+
+.. [Murphy2016] Niall Richard Murphy, Jennifer Petoff, Chris Jones and Betsy Beyer (2016) `Site Reliability Engineering: How Google Runs Production Systems <http://shop.oreilly.com/product/0636920041528.do>`_. O'Reilly Media.
+
+Docker and Kubernetes
+---------------------
+
+Containers, particularly Docker_ containers, are an excellent tool for DevOps.
+Essentially, a container is a very lightweight isolated Linux environment.
+With containers, a Developer can develop and test an application in exactly the same environment as in production.
+Furthermore, this environment is fully specified in a Dockerfile_ that is maintained in Git.
+
+Containers are closely aligned with the idea of microservices: each container should only serve a specific function.
+For example, a Python web application, HTTP reverse proxy, and database should all reside in separate containers.
+This architecture makes containers (or rather, their images) easier to re-use across projects (see `Docker Hub`_), isolates complexity, and also makes a deployment easier to scale.
+
+Given proliferation of containers in a typical deployment, a vibrant class of container orchestration platforms has established itself.
+Examples include `Mesos and Mesosphere DC/OS <https://mesosphere.com/why-mesos/>`_, Docker `Swarm <https://www.docker.com/products/docker-swarm>`_ and `Compose <https://www.docker.com/products/docker-compose>`_, and Kubernetes_.
+
+Ultimately we chose to deploy LTD Keeper iwth Kubernetes_ for several reasons.
+First, we subjectively found Kubernetes easy to use.
+Kubernetes is spun off of Google's proprietary `Borg <https://research.google.com/pubs/pub43438.html>`_ orchestration platform.
+Thus Kubernetes inherits Google's operational experience.
+We found that Kubernetes' Pod, Replication Controller, and Load Balancer service patterns (all configured with YAML) were easy to build a complete LTD Keeper deployment around (:ref:`see below <kubernetes-arch>`).
+
+Another benefit of Kubernetes is that it allows us to deploy LTD Keeper in a cloud (saving operational costs and improving reliability) without being locked into a single cloud provider.
+As a counter-example, Amazon Web Service's Elastic Container Service (ECS) provides a variant of Mesos.
+However, if we developed an LTD Keeper deployment against ECS, we would effectively be locked into the integrated Amazon Web Services API.
+By contrast, Kubernetes is positioned as a developer-friendly orchestration services that can itself by deployed on `OpenStack <http://blog.kubernetes.io/2015/05/kubernetes-on-openstack.html>`__, `Amazon Web Services <http://kubernetes.io/docs/getting-started-guides/aws/>`__, or even `atop another orchestration layer such as Mesos <http://kubernetes.io/docs/getting-started-guides/mesos/>`_.
+
+Currently, LTD Keeper runs on a Kubernetes deployment managed by the Google Cloud Platform (`Google Container Engine`_).
+At any time SQuaRE could opt to use its own Kubernetes deployment should it make strategic sense.
+
+As a footnote, LTD Keeper also `supports Docker Compose  for local development <https://ltd-keeper.lsst.io/compose.html>`_.
+The next section, however, will focus on production deployments with Kubernetes.
+
+.. _kubernetes-arch:
+
+Kubernetes deployment architecture
+----------------------------------
+
+The Kubernetes deployment architecture for LTD Keeper is depicted in the following diagram.
+
+Full operational details are provided in `LTD Keeper's documentation. <https://ltd-keeper.lsst.io/#ops-guide>`__.
+
+.. _fig-kubernetes-arch:
+
+.. figure:: _static/kubernetes_arch.svg
+   
+   LTD Keeper deployment with Kubernetes. In this diagram, an incoming web request is roughly processed from top to bottom.
+
+TLS termination Service tier
+----------------------------
+
+The web request first encounters the ``nginx-ssl-proxy`` Service_.
+In Kubernetes, a Service_ encapsulates networking details from the outside to Pods running within.
+``nginx-ssl-proxy`` is unique in that is exposed to external internet traffic and gives LTD Keeper a fixed IP address.
+Services like ``nginx-ssl-proxy`` also act as load balancers, distributing traffic to pods.
+
+Pod in the ``nginx-ssl-proxy`` Service are managed `Replication Controller`_ of the same name.
+The role of replication controllers in Kubernetes is to launch Pods, and ensure that the desired number of Pods are active.
+If a Pod dies (perhaps because it crashed, or the physical node it is running on failed), the Replication Controller automatically schedules a replacement Pod.
+Replication Controllers also provide a means of scaling the number of Pods in a Service.
+A configuration template for the ``nginx-ssl-proxy`` Replication Controller is `available on GitHub <https://github.com/lsst-sqre/ltd-keeper/blob/master/kubernetes/ssl-proxy.yaml>`__.
+
+Pods run under ``nginx-ssl-proxy`` each host an Nginx reverse proxy container, whose `image is made available by Google Cloud Platform <https://github.com/GoogleCloudPlatform/nginx-ssl-proxy>`_.
+Containers created from this image are configured to terminate TLS traffic using our own TLS certificate, as well as permanently redirect non-TLS traffic to HTTPS.
+These containers are configured with TLS certificates deployed via Kubernetes Secrets_.
+A configuration template for ``nginx-ssl-proxy`` Secrets is `available on GitHub <https://github.com/lsst-sqre/ltd-keeper/blob/master/kubernetes/ssl-proxy-secrets.template.yaml>`_.
+
+Keeper Service tier
+-------------------
+
+Traffic from ``nginx-ssl-proxy`` is directed to the ``keeper`` Service.
+The role of this Service is to provide a networking endpoint for the LTD Keeper application pods, as well as to load balance traffic to these pods.
+Pods containing the LTD Keeper application are managed by a replication controller, which, again, ensures that the required number of ``keeper`` Pods are available, and scales that number on demand.
+
+Rather than create a `Replication Controller`_ directly, we chose to use the higher-level Kubernetes Deployment_ API.
+In addition to maintaining a Replication Controller, Deployments provide a convienient API for upgrading Pods.
+Pod updates can be rolled out, use a canary pattern for testing, and be rolled back if necessary.
+Though the Deployment_ API, deploying an upgrade of LTD Keeper in production is as simple as `pushing a new image to Docker Hub, and rolling out that update with a single Kubernetes command <https://ltd-keeper.lsst.io/gke-update.html>`_.
+
+The ``keeper`` Pods consist of two containers that are internally networked. (*In Kubernetes, Pods are a mechanism for ensuring that closely related containers are scheduled together on the same node.*)
+The first pod is an Nginx reverse proxy, while the second contains the LTD Keeper codebase and runs it as a uWSGI_ application.
+The latter ``uwsgi`` container receives its configuration through a `keeper-secets <https://github.com/lsst-sqre/ltd-keeper/blob/master/kubernetes/keeper-secrets.template.yaml>`_ resources.
+These secrets---which include the secret key for hashing passwords, the administrator's password, API keys for AWS and Fastly, and more benign configuration such as the database URI---are mapped to environment variables that LTD Keeper application reads to configure itself.
+A `keeper-deployment.yaml template is available on GitHub <https://github.com/lsst-sqre/ltd-keeper/blob/master/kubernetes/keeper-deployment.yaml>`_.
+
+Both containers are derived from images based on the Python 3.5 base image on Docker Hub.
+Using a common base image reduces the container footprint on the host node.
+See the `lsst-sqre/nginx-python-docker <https://github.com/lsst-sqre/nginx-python-docker>`_ project and the `lsst-sqre/ltd-keeper <https://github.com/lsst-sqre/ltd-keeper>`_ GitHub repositories for Dockerfiles specifying both containers' images.
+
+Note that in the overall Kubernetes deployment there are two layers of Nginx reverse proxies: one in ``nginx-ssl-proxy`` and another embedded in ``keeper`` pods.
+This architecture, while not strictly necessary, is consistent with a microservices approach.
+Nginx reverse proxies in ``nginx-ssl-proxy`` are solely responsible for TLS termination, while Nginx reverse proxy containers in ``keeper`` containers provide a solid HTTP interface to the LTD Keeper uWSGI application server.
+In the future, Nginx containers in ``nginx-ssl-proxy`` may be replaced by a built-in `Kubernetes Ingress Service that terminates TLS <http://kubernetes.io/docs/user-guide/ingress/#tls>`_.
+As well, pairing a Nginx reverse proxy container with LTD Keeper's uWSGI container allows us to `test their interaction on a local development environment with Docker Compose <https://ltd-keeper.lsst.io/compose.html>`_.
+
+Management pods
+---------------
+
+In general, containers run by Pods start automatically and there is no need to log into a running container.
+Pods are intended to be run as immutable infrastructure.
+
+Databases run counter to this philosophy since they are stateful.
+Provisioning a new database, or migrating a database's schema, are special events that require an operator in the loop.
+
+To deal these circumstances we use a management pod that is modified to run a container with the LTD Keeper codebase, yet not serve traffic.
+When deployed, an operator can log into the management pod and run maintenance tasks included in the LTD Keeper code base, while having access to production configurations.
+LTD Keeper's documentation includes `a playbook for executing database migrations through a maintenance pod <https://ltd-keeper.lsst.io/gke-migrations.html>`_.
+
+Database
+--------
+
+For its initial launch, LSST the Docs' Keeper deployment uses SQLite_ as its relationship database engine.
+Since Kubernetes Pods are ephemeral, the SQLite database is stored on a Google Compute Engine persistent disk that is attached to the node hosting the ``keeper`` pod.
+This choice imposes a limitation on LTD Keeper's reliability since the persistent disk can only be attached to a single node.
+Ideally we would run several ``keeper`` pods simultaneously from multiple nodes.
+
+We plan to eventually migrate from SQLite_ to a hosted relational database solution.
+Given our current use of Google Cloud Platform, the `Google Cloud SQL <https://cloud.google.com/sql/>`_ hosted MySQL database is the primary choice.
+Since LTD Keeper uses SQLAlchemy_ to generically interact with SQL database, this eventual migration will be easy. 
 
 .. _additional-reading:
 
 Additional Resources
 ====================
+
+LSST the Docs code is MIT-Licensed open source.
+It's built either natively for, or compatible with, Python 3.
+Here are the main repositories and their documentation:
 
 - LTD Mason
   
@@ -812,6 +965,8 @@ Additional Resources
 
   - Source code: https://github.com/lsst-sqre/ltd-keeper.
   - Documentation: https://ltd-keeper.lsst.io.
+
+Work on LSST the Docs is labeled under `'lsst-the-docs' <https://jira.lsstcorp.org/issues/?jql=labels%20%3D%20lsst-the-docs%20ORDER%20BY%20key%20ASC>`_ on LSST Data Management's JIRA.
 
 LSST the Docs is part of a greater LSST Data Management documentation and communications strategy.
 For more information:
@@ -843,3 +998,18 @@ For more information:
 .. _boto3: http://boto3.readthedocs.io/en/latest/
 .. _React: https://facebook.github.io/react/
 .. _Flask: http://flask.pocoo.org
+.. _SQLAlchemy: http://www.sqlalchemy.org
+.. _Kubernetes: https://kubernetes.io
+.. _Puppet: https://puppet.com
+.. _Terraform: https://www.terraform.io
+.. _Docker: https://www.docker.com
+.. _Docker Hub: https://www.docker.com/products/docker-hub
+.. _Dockerfile: https://docs.docker.com/engine/reference/builder/
+.. _Google Container Engine: https://cloud.google.com/container-engine/
+.. _Service: http://kubernetes.io/docs/user-guide/services/
+.. _Replication Controller: http://kubernetes.io/docs/user-guide/replication-controller/
+.. _Deployment: http://kubernetes.io/docs/user-guide/deployments/
+.. _Pod: http://kubernetes.io/docs/user-guide/pods/
+.. _Secrets: http://kubernetes.io/docs/user-guide/secrets/
+.. _SQLite: https://www.sqlite.org
+.. _uWSGI: http://uwsgi-docs.readthedocs.io/en/latest/
