@@ -485,7 +485,7 @@ These objectives can be achieved by setting the page's canonical URL in the HTML
 Note that this will require modification of the HTML presentation of projects published on LSST the Docs.
 As an alternative, LSST the Docs may in the future `set the canonical URL of pages it serves through an HTTP header <https://support.google.com/webmasters/answer/139066?hl=en&rd=1#6>`_:
 
-.. code-block:: http
+.. code-block:: text
 
    Link: <https://example.lsst.io/index.html>; rel="canonical"
 
@@ -823,10 +823,8 @@ Since we are a small, agile group, we cannot afford to hire staff who either onl
 Another advantage of DevOps is that there are massive incentives for developers to write reliable, easy to maintain, services---otherwise developers would never have time to develop new features.
 Google's `Site Reliability Engineer <http://shop.oreilly.com/product/0636920041528.do>`_ program is an especially good example.
 Google SREs are only 'allowed' to spend 50% of their time operating services.
-If a service requires more operational effort, regular developers are temporarily drafted into an SRE team until systematic operational issues are resolved [Murphy2016]_.
+If a service requires more operational effort, regular developers are temporarily drafted into an SRE team until systematic operational issues are resolved. :cite:`Murphy2016`
 This feedback loop ensures that operational technical debt is kept in check.
-
-.. [Murphy2016] Niall Richard Murphy, Jennifer Petoff, Chris Jones and Betsy Beyer (2016) `Site Reliability Engineering: How Google Runs Production Systems <http://shop.oreilly.com/product/0636920041528.do>`_. O'Reilly Media.
 
 Docker and Kubernetes
 ---------------------
@@ -974,6 +972,14 @@ For more information:
 - `SQR-000: The LSST DM Technical Note Publishing Platform <http://sqr-000.lsst.io>`_.
 - `SQR-011: LSST Data Management Communication & Publication Platforms <http://sqr-011.lsst.io>`_.
 - Resources for documentation writers in the LSST DM Developer Guide: https://developer.lsst.io.
+
+References
+==========
+
+.. bibliography:: bibliography.bib
+   :encoding: latex+latin
+   :style: plain
+
 
 .. _LTD Mason: https://ltd-mason.lsst.io
 .. _LTD Keeper: https://ltd-keeper.lsst.io
