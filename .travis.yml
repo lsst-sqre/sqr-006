@@ -6,7 +6,7 @@ matrix:
       env: LTD_MASON_BUILD=true
 install:
   - pip install -r requirements.txt
-  - pip install ltd-mason>=0.2,<0.3
+  - pip install "ltd-mason>=0.2,<0.3"
 script:
   - sphinx-build -b html -a -n -W -d _build/doctree . _build/html
 after_success:
