@@ -1,16 +1,16 @@
 # Introducing LSST the Docs for Continuous Documentation Delivery
 
-On behalf of the crew at SQuaRE, I'm pleased to introduce *LSST the Docs,* Data Management's new documentation publishing platform. LSST the Docs will allow Data Management to create and iterate on documentation more quickly, while also giving readers a better experience.
+On behalf of the crew at SQuaRE, I'm pleased to introduce *LSST the Docs,* Data Management's new documentation publishing platform. LSST the Docs will allow Data Management to create and iterate on documentation more effectively, while also giving readers a better experience.
 
-Soon, you'll see DM's technotes, Developer Guide, and some design documents migrate from [Read the Docs](http://readthedocs.org) to the new platform. In the Fall of 2016 we will begin publishing a rebooted Science Pipelines documentation site on LSST the Docs.
+Soon, you'll see DM's technotes, Developer Guide, and some design documents migrate from [Read the Docs](http://readthedocs.org) to the new platform. In the upcoming Fall 2016 cycle we will begin publishing a rebooted Science Pipelines documentation site on LSST the Docs.
 
 You can read more about the platform in [SQR-006: The LSST the Docs Platform for Continuous Documentation Delivery](https://sqr-006.lsst.io).
 
 ## Why did we build LSST the Docs?
 
-I really admire what [Read the Docs](http://readthedocs.org) has done for open source documentation. Read the Docs has made it so much easier for developers to continuously deploy documentation alongside their projects. At one point, LSST Data Management had 39 projects published with Read the Docs. I have been, and continue to be, grateful for what Read the Docs has done for open source software and the Python ecosystem in particular.
+I really admire what [Read the Docs](http://readthedocs.org) has done for open source documentation. Read the Docs has made it so much easier for developers to continuously deploy documentation alongside their projects. At one point, LSST Data Management had 39 projects published with Read the Docs. I have been, and continue to be, grateful for what Read the Docs has done for open source software and the Python community in particular.
 
-But our experience on Read the Docs informed us of two things. First, we need flexibility in the build environment. Second, we need more automation to help manage the fleet of documents that Data Management ships.
+But we learned two things from using Read the Docs. First, LSST's projects demand a lot flexibility in their build environments. Second, we need more automation to help manage the fleet of documents that Data Management ships.
 
 Read the Docs is built to be an easy-to-use integrated documentation publishing service, and that integration includes the environment where documentation is built. Unfortunately, LSST Science Pipelines simply can't fit in that environment, both in terms of computational resources and that LSST speaks a different build language than most Python projects (EUPS versus `pip`). We already have continuous integration services for LSST projects and it makes sense to build documentation on those as well.
 
