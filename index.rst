@@ -1056,7 +1056,7 @@ References
 .. _React: https://facebook.github.io/react/
 .. _Flask: http://flask.pocoo.org
 .. _SQLAlchemy: http://www.sqlalchemy.org
-.. _Kubernetes: https://kubernetes.io
+.. _Kubernetes: http://kubernetes.io
 .. _Puppet: https://puppet.com
 .. _Terraform: https://www.terraform.io
 .. _Docker: https://www.docker.com
