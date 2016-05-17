@@ -510,14 +510,12 @@ By bringing the documentation content closer to the reader, regardless of where 
 Organization of documentation in S3
 -----------------------------------
 
-Amazon Web Services S3 is commonly used to host static web sites.
 Static web pages are conceptually simple to serve since individual files on the server's filesystem map directly to URLs.
-S3 specifically provides a cost-effective static site hosting solution that is highly available and resilient to any traffic load.
-
+Specifically, S3 provides a cost-effective static site hosting solution that is highly available and resilient to any traffic load.
 S3 even includes a setting to turn its buckets into `statically hosted public websites <http://docs.aws.amazon.com/AmazonS3/latest/dev/WebsiteHosting.html>`_.
-In this approach, the S3 bucket's URL is named after the domain the site is served from.
-For *LSST the Docs,* this would imply that each documentation project would need its own bucket in order to be served from its own subdomain.
-Creating so many buckets, especially autonomously, is not a scalable approach since Amazon puts a soft-limit of 100 buckets per AWS account.
+In this mode, the S3 bucket's URL is named after the domain the site is served from.
+For *LSST the Docs,* this would imply that each documentation project would need its own bucket to be served from its own subdomain.
+Creating so many buckets, especially autonomously, is not a scalable approach since Amazon asserts an apparent limit of 100 buckets per AWS account.
 
 Instead of using multiple S3 buckets, we adopted a scalable solution advocated by Seth Vargo of HashiCorp where `multiple sites are stored in a single S3 bucket but served separately through Fastly <https://www.hashicorp.com/blog/serving-static-sites-with-fastly.html>`_.
 
