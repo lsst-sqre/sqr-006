@@ -500,8 +500,8 @@ To meet these requirements, *LSST the Docs* uses two managed services: Amazon We
 The role of S3 is to authoritatively store all documentation sites hosted by *LSST the Docs.*
 When readers visit an ``lsst.io`` site, they do not directly interact with S3, but rather with Fastly_.
 As a content distribution network, Fastly_ has `points of presence <https://www.fastly.com/services/modern-network-design>`_ distributed globally.
-When a page from *LSST the Docs* is requested for the first time, Fastly_ retrieves the page from S3 and forwards it the original requester.
-At the same time, Fastly caches the page in all of its points of presence.
+When a page from *LSST the Docs* is requested for the first time from a point of presence, Fastly_ retrieves the page from S3 and forwards it the original requester.
+At the same time, Fastly caches the page in its point of presence.
 The next time the same page is requested, it is served directly from the nearby Fastly point of presence.
 By bringing the documentation content closer to the reader, regardless of where on Earth the reader is, *LSST the Docs* can deliver content with less latency.
 
