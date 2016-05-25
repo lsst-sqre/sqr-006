@@ -2,6 +2,8 @@
 
 .. sectnum::
 
+.. note:: Whoa!
+
 Introduction
 ============
 
