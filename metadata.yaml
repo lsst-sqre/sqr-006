@@ -13,18 +13,18 @@ serial_number: '006'
 doc_id: 'SQR-006'
 
 # Title of the document, without the series/serial designation
-doc_title: "Documentation Deployment Service for LSST's Eups-based Software"
+doc_title: "The LSST the Docs Platform for Continuous Documentation Delivery"
 
 # Author names, ordered as a list. Each author name should be formatted as 'First Last'
 authors:
     - 'Jonathan Sick'
 
 # Current document version
-last_revised: '2016-02-23'
+last_revised: '2016-05-16'
 
 # Version. Use Semvar, e.g., 1.0, including .dev, as necessary
 # This version string should correspond to the git tag when the document is published on Zenodo
-version: '1.0.dev'
+version: '1.0'
 
 # Digital Object Identifier (DOI). Uncomment if available.
 # Keep this DOI updated as new releases are pushed to Zenodo
@@ -34,7 +34,7 @@ version: '1.0.dev'
 copyright: '2016, AURA/LSST'
 
 # Description. A short, 1-2 sentence statemement used by document indices.
-description: 'The document describes the backend services that deploy documentation to the web whenever the Jenkins continuous integration system is triggered. The service is specifically designed for the Eups and Scons-based build tooling used by the LSST Stack.'
+description: 'LSST the Docs is a platform for publishing documentation websites. Through a microservice architecture, LSST the Docs is capable of building even complex multi-repository documentation projects and publishing many versions concurrently on the web.'
 
 # Abstract, if available
 # abstract: >
@@ -44,7 +44,7 @@ description: 'The document describes the backend services that deploy documentat
 #           You can have multiple paragraphs too.
 
 # URL where this document is published by Read the Docs. e.g. http://sqr-001.lsst.codes
-url: 'http://sqr-006.lsst.io'
+url: 'https://sqr-006.lsst.io'
 
 # LSST Docushare URL, if authoritative versions of this are are stored there.
 # Leave as an empty string or comment out this key if there is no Docushare URL.
