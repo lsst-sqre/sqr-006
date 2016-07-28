@@ -606,13 +606,51 @@ For example, the code to re-write a directory URL to the :file:`index.html` docu
 
 .. literalinclude:: includes/index-rewrite.vcl
 
+Web servers also provide courtesy directory redirects: even if a user requests only ``example.lsst.io/dirname``, a server will know to redirect and serve ``example.lsst.io/dirname/index.html``.
+This feature is more difficult to implement in VCL since Varnish do not know if ``/dirname`` is a directory or merely a file named ``dirname``.
+LSST the Docs solves this issue in a two-phased approach.
+
+First, LTD Mason uploads 'directory redirect objects' automatically with each build to S3.
+These objects, created for each directory, possess the directory's name.
+Such objects can exist in an S3 bucket because S3 does not implement directories as filesystem objects, rather they are inferred by from objects' *keys*.
+These directory redirect objects are empty, except for a metadata header: ``x-amz-meta-dir-redirect=true``.
+
+When a user requests a URL like ``example.lsst.io/v/demo``, Fastly will receive the directory redirect object from S3.
+In the ``vcl_fetch`` Varnish phase, this header is detected:
+
+
+.. code-block:: text
+
+   if ( beresp.http.x-amz-meta-dir-redirect ) {
+   	 error 901 "Fastly Internal";
+   }
+
+The internal 901 error is caught in ``vcl_deliver`` and converted into a 301 permanent redirect response.
+
+.. code-block:: text
+
+   if (resp.status == 901 ) {
+       set resp.status = 301;
+       set resp.response = "Moved Permanently";
+   }
+
+And the destination URL for the redirect is set:
+
+.. code-block:: text
+
+   if( req.url !~ "/$" && resp.status == 301 ) {
+       set resp.http.location = "https://" req.http.Fastly-Orig-Host req.http.x-original-url "/index.html";
+   }
+
+Note that the ``req.http.x-original-url`` and ``req.http.Fastly-Orig-Host`` are the originally requested paths and domain names, respectively, cached early by the Varnish processing stack.
+
 Redirecting Read the Docs URLs
 ------------------------------
 
 When *LSST the Docs* was launched, tens of LSST documents were already being published with Read the Docs.
 Whereas *LSST the Docs* serves default documentation from the root URL, ``example.lsst.io/``, Read the Docs always exposes a version name in its URLs.
 The default edition is ``example.lsst.io/en/latest/``.
-To prevent broken URLs, we coded the VCL to send a 301 permanent HTTP redirect response to any path beginning with ``/en/latest/``.
+To prevent broken URLs, we coded the VCL to send a 301 permanent HTTP redirect response to any path beginning with ``/en/latest/``, using a pattern similar to the courtesy directory redirects described previously.
 
 In ``vcl_recv``, the deprecated URL is detected:
 
@@ -622,17 +660,7 @@ In ``vcl_recv``, the deprecated URL is detected:
      error 900 "Fastly Internal";
    } 
 
-This internal error (code 900) is caught in ``vcl_error``:
-
-.. code-block:: text
-
-   if (obj.status == 900 ) {
-     set obj.http.Content-Type = "";   
-     synthetic {""};
-     return(deliver);
-  }
-
-and finally in ``vcl_deliver``:
+In ``vcl_deliver``, the internal 900 error is converted into a 301 response:
 
 .. literalinclude:: includes/rtd-redirect.vcl
 
