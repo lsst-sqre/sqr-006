@@ -80,7 +80,7 @@ The LSST Science Pipelines build process does not follow this architecture, and 
 Simply put, the LSST Science Pipelines build process is incompatible with Read the Docs.
 
 Another challenge was the scalability of administration for Read the Docs-hosted projects.
-This challenge was particularly accurate with LSST Technotes.
+This challenge was particularly acute with LSST Technotes.
 Each technote was implemented as its own Read the Docs project.
 To encourage the adoption of Technotes, a single DM team member was responsible for configuring a new Read the Docs project (including DNS configuration).
 While this ensured consistent configuration, it created a bottleneck in Technote publication.
@@ -89,7 +89,7 @@ Ideally, documentation project provisioning should be fully automated, perhaps e
 
 In day-to-day development work, this administration model was also a bottleneck.
 For each development branch, the developer would have to ask the administrator to create a new branch build so that the documentation could be previewed in development and code review.
-Often times, developers would never see their rendered documentation until it was merged, sometimes resulting in obvious formatting errors on the published ``master`` branch documentation.
+Oftentimes, developers would never see their rendered documentation until it was merged, sometimes resulting in obvious formatting errors on the published ``master`` branch documentation.
 Alternatively, developers would rely upon GitHub's rendering of a reStructuredText file.
 Developers who did this were often confused about rendering errors, not realizing that GitHub does not render the extended reStructuredText syntax available to Sphinx.
 Instead, we want new versions of documentation to be published immediately and automatically for each branch.
@@ -698,7 +698,7 @@ Managing Fastly and browser caching
 
 Caches accelerate browsing performance.
 In *LSST the Docs* there is not one cache but two: Fastly, and the local cache maintained by a web browser.
-With caches there is a natural tendency between the lifetime of objects in a cache and ensuring that a browser is always displaying the most recent content.
+With caches there is a natural tension between the lifetime of objects in a cache and ensuring that a browser is always displaying the most recent content.
 This section summarizes how *LSST the Docs* manages caches.
 Note that this cache logic is controlled both by the :ref:`LTD Mason upload phase <ltd-mason-uploads>` and :ref:`LTD Keeper's Edition updates <ltd-keeper-edition-updates>`.
 
